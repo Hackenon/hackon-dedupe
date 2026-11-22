@@ -1,0 +1,33 @@
+# Python's private setup for this project (rebuild with pip)
+.venv/
+__pycache__/
+
+# Your photos and scan results: personal data, and far too big for Git
+Test Photos/
+results.json
+_review/
+moves.json
+movie_moves.json
+tv_moves.json
+shortcuts.json
+fingerprints.json
+settings.json
+movie_results.json
+*.broken-*.json
+tv_results.json
+*.migrated
+*.migrated-*
+logs/
+
+# Running changelog: working files, local only. Pending resets after each commit;
+# archive keeps a local copy of everything so nothing is ever lost.
+CHANGELOG.pending.md
+CHANGELOG.archive.md
+
+# Marketing site lives in its own repo
+site/
+
+# Downloaded ffprobe (fetched at runtime, not source)
+bin/
+unplayable.json
+PLAN.md

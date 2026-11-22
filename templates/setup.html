@@ -1,0 +1,639 @@
+{% extends "layout.html" %}
+
+{% block main %}
+  {% if first_run %}
+    <div class="panel">
+      <p>&gt;&gt; FIRST RUN DETECTED.</p>
+      <p class="meta">Connect your media apps here. Photo scanning works without any of this,
+         so you can skip this and come back later.</p>
+      {% if netscan_enabled %}{# netscan: remove this block to remove the feature #}
+        <div class="row">
+          <button class="secondary" id="probe-network">&#9654; PROBE LOCAL NETWORK FOR MY SERVERS</button>
+          <span id="probe-network-status" class="meta"></span>
+        </div>
+        <p class="meta">// LOOKS ONLY ON YOUR OWN NETWORK ({{ network_prefix or '192.168.1' }}.1-254), ONLY ON THE RADARR, SONARR
+           AND PLEX PORTS, ONLY WHEN YOU PRESS IT. IT CONTACTS DEVICES ON YOUR NETWORK TO SEE WHICH ONES ANSWER.
+           <span class="warn">WHY THIS WORKS: THESE SERVERS ACCEPT CONNECTIONS FROM ANY DEVICE ON YOUR NETWORK. ANYTHING ELSE ON IT
+           COULD FIND THEM THE SAME WAY. TO PREVENT IT, KEEP THEM OFF UNTRUSTED NETWORKS AND REQUIRE A SIGN-IN.</span></p>
+        <div id="probe-network-results"></div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% for service in services %}
+    <h2>{{ service.name }} <small>{{ service.media }}</small></h2>
+    <div class="panel service" data-service="{{ service.key }}" data-name="{{ service.name }}">
+      <div class="row">
+        <span class="label">ADDRESS:</span>
+        <input type="text" class="url" spellcheck="false"
+               placeholder="http://{{ network_prefix or '192.168.1' }}.x:{{ service.port }}" value="{{ service.url }}">
+      </div>
+      <div class="row">
+        <span class="label">API KEY:</span>
+        <input type="password" class="api-key" autocomplete="off" spellcheck="false"
+               placeholder="{{ 'saved ' ~ service.key_hint ~ ' (leave blank to keep)' if service.key_hint else 'paste the API key here' }}">
+      </div>
+      <div class="row">
+        <span class="label"></span>
+        <span class="meta">// FIND IT IN {{ service.name | upper }}: SETTINGS &gt; GENERAL &gt; SECURITY &gt; API KEY</span>
+      </div>
+      {% if apikey_enabled %}{# apikey: remove this block to remove the feature #}
+      <div class="row">
+        <span class="label"></span>
+        <button class="secondary grab-key">GRAB KEY FROM SERVER</button>
+        <span class="grab-result meta"></span>
+      </div>
+      <div class="row">
+        <span class="label"></span>
+        <span class="meta">// SKIP TYPING THE KEY IF {{ service.name | upper }} IS SET TO "DISABLED FOR LOCAL ADDRESSES".
+          <span class="warn">THEN ANY DEVICE ON YOUR NETWORK CAN READ IT THE SAME WAY.</span></span>
+      </div>
+      {% endif %}
+      <div class="row">
+        <span class="label"></span>
+        <button class="test">TEST CONNECTION</button>
+        <span class="test-result"></span>
+      </div>
+
+      <div class="mapping" {{ "hidden" if not service.path_map }}>
+        <p class="meta">// {{ service.name | upper }} STORES {{ service.media | upper }} IN THE FOLDERS ON THE LEFT. FOLDERS THIS
+           COMPUTER CAN ALREADY REACH ARE FILLED IN FOR YOU. FOR ANY MARKED [NOT FOUND], BROWSE TO THE SAME FOLDER.</p>
+        <div class="host-prompts"></div>
+        <div class="mapping-rows">
+          {% for server_path, pc_path in service.path_map.items() %}
+            <div class="row map-row" data-server="{{ server_path }}">
+              <span class="label server-path">{{ server_path }}</span>
+              <input type="text" class="pc-path" spellcheck="false" value="{{ pc_path }}">
+              <button class="secondary browse-row">BROWSE...</button>
+              <span class="path-status"></span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+
+  <h2>Plex <small>photos, movies, TV</small></h2>
+  <div class="panel" id="plex">
+    <div class="row">
+      <span class="label">ADDRESS:</span>
+      <input type="text" class="url" spellcheck="false"
+             placeholder="http://{{ network_prefix or '192.168.1' }}.x:32400" value="{{ plex.url }}">
+    </div>
+    <div class="row">
+      <span class="label">SIGN-IN:</span>
+      <span id="plex-status" class="{{ '' if plex.signed_in else 'meta' }}">{{ "[OK] SIGNED IN" if plex.signed_in else "NOT SIGNED IN" }}</span>
+      <button id="plex-signin" {{ "hidden" if plex.signed_in }}>SIGN IN WITH PLEX</button>
+      <button class="secondary" id="plex-signout" {{ "hidden" if not plex.signed_in }}>SIGN OUT</button>
+    </div>
+    <div class="row">
+      <span class="label"></span>
+      <span class="meta">// OPENS PLEX'S OWN SIGN-IN PAGE. APPROVE "HACKON PHOTO & VIDEO DEDUPE" THERE; YOUR PASSWORD NEVER COMES HERE.</span>
+    </div>
+    <div class="row">
+      <span class="label"></span>
+      <span class="meta">// THE SIGN-IN GIVES THIS APP ACCESS TO YOUR WHOLE PLEX ACCOUNT, NOT JUST THIS SERVER. TO CUT IT OFF:
+        SIGN OUT HERE, AND IN PLEX GO TO ACCOUNT SETTINGS &gt; AUTHORIZED DEVICES AND REMOVE "HACKON PHOTO & VIDEO DEDUPE"
+        (OR VISIT app.plex.tv &gt; SETTINGS &gt; AUTHORIZED DEVICES).</span>
+    </div>
+    {% if backdoor_enabled %}{# backdoor: remove this block to remove the feature #}
+      <div class="row">
+        <span class="label">BACKDOOR:</span>
+        <span id="backdoor-status" class="{{ '' if plex.backdoor else 'meta' }}">
+          {{ "[OPEN] TRUSTED NETWORK. NO CREDENTIALS REQUIRED." if plex.backdoor else "NOT DETECTED" }}</span>
+        <button class="secondary" id="backdoor-probe">PROBE FOR BACKDOOR</button>
+      </div>
+      <div class="row">
+        <span class="label"></span>
+        <span class="meta">// NO SIGN-IN NEEDED IF PLEX ALREADY TRUSTS YOUR NETWORK. TO OPEN IT: PLEX &gt; SETTINGS &gt; NETWORK &gt;
+          "LIST OF IP ADDRESSES AND NETWORKS THAT ARE ALLOWED WITHOUT AUTH" &gt; ADD
+          {{ network_prefix or '192.168.1' }}.0/255.255.255.0, SAVE, THEN PROBE.
+          <span class="warn alarm">WARNING: ANY DEVICE ON YOUR NETWORK CAN THEN CONTROL PLEX WITHOUT A PASSWORD.</span>
+          <style>
+            /* backdoor warning: normal colour for 2 seconds, red for 2 seconds */
+            .alarm { animation: alarm 4s step-end infinite; }
+            @keyframes alarm { 50% { color: #ff3b3b; text-shadow: 0 0 6px rgba(255, 59, 59, .7); } }
+          </style></span>
+      </div>
+    {% endif %}
+    <div class="row">
+      <span class="label"></span>
+      <button class="test">TEST CONNECTION</button>
+      <span class="test-result"></span>
+    </div>
+    <div class="row">
+      <span class="label"></span>
+      <label><input type="checkbox" id="plex-rescan" {{ "checked" if plex.rescan_after_move }}>
+        TELL PLEX TO RESCAN AFTER MOVING FILES</label>
+    </div>
+
+    <div class="mapping" {{ "hidden" if not plex.path_map }}>
+      <p class="meta">// PLEX'S PHOTOS, MOVIES AND TV LIBRARIES USE THE FOLDERS ON THE LEFT. FOLDERS THIS COMPUTER CAN
+         ALREADY REACH ARE FILLED IN. FOR ANY MARKED [NOT FOUND], BROWSE TO THE SAME FOLDER.</p>
+      <div class="host-prompts"></div>
+      <div class="mapping-rows">
+        {% for server_path, pc_path in plex.path_map.items() %}
+          <div class="row map-row" data-server="{{ server_path }}">
+            <span class="label server-path">{{ server_path }}</span>
+            <input type="text" class="pc-path" spellcheck="false" value="{{ pc_path }}">
+            <button class="secondary browse-row">BROWSE...</button>
+            <span class="path-status"></span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <h2>Options</h2>
+  <div class="panel" id="options">
+    <div class="subsection">
+      <div class="subhead">VIDEO DETAILS</div>
+      <div class="indent">
+        <div class="row"><span class="meta">// DEPLOY FFPROBE AGENTS TO RECOVER MISSING FILE INTEL (RESOLUTION, CODEC, LENGTH)</span></div>
+        <div class="row"><label class="opt"><input type="radio" name="media-details" value="button" {{ "checked" if media_details == "button" }}>
+          <span>STANDBY: AWAIT ORDERS AFTER INITIAL SCAN (FASTER SCANS)</span></label></div>
+        <div class="row"><label class="opt"><input type="radio" name="media-details" value="auto" {{ "checked" if media_details == "auto" }}>
+          <span>AUTONOMOUS: DEPLOY DURING EVERY SCAN (FIRST SCAN TAKES A FEW MINUTES LONGER; REMEMBERED AFTER)</span></label></div>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="subhead">DEFAULT MOVE LOCATIONS</div>
+      <div class="indent">
+        <div class="row"><span class="meta">// WHERE "MOVE TICKED" PUTS FILES, PER APP. BLANK = A _review FOLDER INSIDE EACH ROOT (THE SAFE DEFAULT).
+          EACH MOVIES/TV PAGE ALSO HAS A "MOVE TO LOCATION..." BUTTON TO RELOCATE A STRAY SOMEWHERE ELSE.</span></div>
+        {% for s in services %}
+        <div class="row">
+          <span class="label">{{ s.media | upper }}:</span>
+          <input type="text" class="move-default" data-service="{{ s.key }}" spellcheck="false"
+                 placeholder="blank = _review in each root folder" value="{{ s.move_to }}">
+          <button class="secondary browse-move">BROWSE...</button>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="subhead">FFPROBE &mdash; VIDEO DETAIL TOOL</div>
+      <div class="indent">
+        <div class="row">
+          <span id="ffprobe-status">{% if has_ffprobe %}<span>[OK] READY</span>
+          {% elif can_get_ffmpeg %}<span class="warn">NOT FOUND</span>
+            <button class="secondary" id="get-ffmpeg">&#9654; GET FFMPEG ({{ ffmpeg_size }})</button>
+          {% else %}<span class="warn">NOT FOUND. Install FFmpeg and it'll be found on PATH.</span>{% endif %}</span>
+        </div>
+        {% if not has_ffprobe and can_get_ffmpeg %}
+        <div class="row"><span class="meta">// ffprobe reads video resolution, codec and length. One click fetches an
+          LGPL build straight into the app &mdash; no winget, no admin, nothing installed system-wide.</span></div>
+        <div class="row" id="ffmpeg-progress" hidden><pre class="terminal" id="ffmpeg-log" style="min-height:0;max-height:160px"></pre></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="subhead">BUG REPORTS</div>
+      <div class="indent">
+        <div class="row"><input type="text" id="bug-repo" spellcheck="false" placeholder="GitHub repository, e.g. owner/hackon-dedupe" value="{{ bug_report_repo }}"></div>
+        <div class="row"><span class="meta">// "REPORT BUG" OPENS A PRE-FILLED ISSUE HERE. YOU REVIEW AND SUBMIT IT YOURSELF. KEYS, NETWORK ADDRESSES
+          AND YOUR WINDOWS USERNAME ARE REMOVED; FILE AND FOLDER NAMES (NAS NAME, TITLES) ARE NOT. EDIT THEM ON GITHUB IF NEEDED.</span></div>
+        {% if error_count %}
+        <div class="row"><span class="label">ERROR LOGS:</span><span>{{ error_count }} ON THIS COMPUTER. <a href="/errors">&gt; SEE THEM ON THE ERRORS TAB</a></span></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="subhead">SECURITY</div>
+      <div class="indent">
+        <div class="row">
+          <span class="label">KEY STORAGE:</span>
+          {% if key_store %}<span>[OK] API KEYS AND PLEX SIGN-IN LOCKED IN {{ key_store }}</span>
+          {% else %}<span class="warn">API KEYS AND PLEX SIGN-IN ARE IN PLAIN TEXT IN settings.json.
+            TO LOCK THEM AWAY: pip install -r requirements.txt, THEN RESTART THE APP</span>{% endif %}
+        </div>
+        <div class="row"><span class="meta">// ADDRESSES STARTING http:// SEND KEYS ACROSS YOUR HOME NETWORK UNENCRYPTED. IF YOUR SERVERS
+          SUPPORT IT, USE https:// ADDRESSES INSTEAD.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Help</h2>
+  <div class="panel">
+    <p>&gt;&gt; NEW HERE? THE GUIDE EXPLAINS EVERY PAGE, EACH KIND OF SCAN, AND HOW TO CONNECT RADARR / SONARR / PLEX.</p>
+    <p><a href="/help">&gt; OPEN THE FULL HELP &amp; INSTALL GUIDE</a></p>
+    {% if help_toc %}
+      <ul class="toc meta">
+        {% for title, anchor in help_toc %}<li><a href="/help#{{ anchor }}">{{ title }}</a></li>{% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+
+  <div class="row">
+    <button class="big" id="save">&#9654; SAVE SETTINGS</button>
+    {% if first_run %}<button class="secondary" id="skip">SKIP FOR NOW</button>{% endif %}
+    <span id="save-result"></span>
+  </div>
+
+  <script>
+    // This computer's network, e.g. "192.168.20", worked out by the server.
+    const NETWORK_PREFIX = {{ network_prefix | tojson }};
+
+    async function post(url, data) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data || {}),
+      });
+      return { ok: response.ok, data: await response.json() };
+    }
+
+    function say(element, text, isError) {
+      element.textContent = text;
+      element.classList.toggle("error", Boolean(isError));
+    }
+
+    // ---- Path mapping rows ----
+    async function checkRow(row) {
+      const status = row.querySelector(".path-status");
+      const path = row.querySelector(".pc-path").value;
+      if (!path) { say(status, ""); return; }
+      const { data } = await post("/setup/check-path", { path });
+      say(status, data.exists ? "[OK]" : "[NOT FOUND]", !data.exists);
+    }
+
+    function wireRow(row) {
+      const input = row.querySelector(".pc-path");
+      input.addEventListener("change", () => checkRow(row));
+      row.querySelector(".browse-row").addEventListener("click", async () => {
+        say(row.querySelector(".path-status"), "WAITING FOR FOLDER PICKER...");
+        const { ok, data } = await post("/browse");
+        if (ok && data.path) input.value = data.path;
+        checkRow(row);
+      });
+      checkRow(row);
+    }
+
+    function addRow(section, serverPath, pcPath, label) {
+      const row = document.createElement("div");
+      row.className = "row map-row";
+      row.dataset.server = serverPath;
+      row.innerHTML = `
+        <span class="label server-path"></span>
+        <input type="text" class="pc-path" spellcheck="false">
+        <button class="secondary browse-row">BROWSE...</button>
+        <span class="path-status"></span>`;
+      row.querySelector(".server-path").textContent = (label ? `[${label}] ` : "") + serverPath;  // textContent: safe for any path
+      row.querySelector(".pc-path").value = pcPath || "";
+      section.querySelector(".mapping-rows").appendChild(row);
+      wireRow(row);
+    }
+
+    // ---- NAS with another address ----
+    // For each server in an unreachable network path, ask whether it has
+    // another address, then try the paths with that address instead.
+    function showHostPrompts(section, folders) {
+      const box = section.querySelector(".host-prompts");
+      box.innerHTML = "";
+      const example = NETWORK_PREFIX ? `${NETWORK_PREFIX}.x` : "192.168.1.x";
+      const hosts = [...new Set(folders.map(folder => folder.host))];
+
+      hosts.forEach(host => {
+        const paths = folders.filter(folder => folder.host === host).map(folder => folder.path);
+        const prompt = document.createElement("div");
+        prompt.className = "panel";
+        prompt.innerHTML = `
+          <p class="warn"></p>
+          <div class="row">
+            <span class="label">OTHER ADDRESS:</span>
+            <input type="text" class="alt-host" spellcheck="false">
+            <button class="try-host">TRY IT</button>
+            <span class="host-status"></span>
+          </div>`;
+        prompt.querySelector(".alt-host").placeholder = `e.g. ${example} or nas.local`;
+        prompt.querySelector(".warn").textContent =
+          `>> SERVER ${host} ISN'T REACHABLE FROM THIS COMPUTER. DOES IT HAVE ANOTHER ADDRESS?`;
+
+        prompt.querySelector(".try-host").addEventListener("click", async () => {
+          const status = prompt.querySelector(".host-status");
+          say(status, "TRYING...");
+          const { ok, data } = await post("/setup/try-host",
+            { host: prompt.querySelector(".alt-host").value, paths });
+          if (!ok) { say(status, "ERROR: " + data.error, true); return; }
+
+          let found = 0;
+          data.attempts.forEach(attempt => {
+            if (!attempt.reachable) return;
+            const row = [...section.querySelectorAll(".map-row")]
+              .find(r => r.dataset.server === attempt.path);
+            if (row) { row.querySelector(".pc-path").value = attempt.suggestion; checkRow(row); found++; }
+          });
+
+          if (found === paths.length) {
+            prompt.remove();  // all fixed
+          } else {
+            say(status, found
+              ? `[OK] ${found} OF ${paths.length} FOUND. BROWSE FOR THE REST.`
+              : "[NOT FOUND] NONE OF THE FOLDERS OPEN AT THAT ADDRESS", !found);
+          }
+        });
+        box.appendChild(prompt);
+      });
+    }
+
+    // ---- Each service section (Radarr, Sonarr) works the same way ----
+    document.querySelectorAll(".service").forEach(section => {
+      const name = section.dataset.name.toUpperCase();
+      section.querySelectorAll(".map-row").forEach(wireRow);
+
+      // apikey: read the key straight off the server when it trusts this network.
+      const grabButton = section.querySelector(".grab-key");
+      if (grabButton) grabButton.addEventListener("click", async () => {
+        const out = section.querySelector(".grab-result");
+        const steps = ["PROBING " + name.toUpperCase() + "...", "REQUESTING INIT DATA...", "EXTRACTING API KEY..."];
+        grabButton.disabled = true; out.className = "grab-result meta";
+        for (const line of steps) { out.textContent = line; await new Promise(r => setTimeout(r, 500)); }
+        const { ok, data } = await post(`/setup/${section.dataset.service}/probe-key`, { url: section.querySelector(".url").value });
+        grabButton.disabled = false;
+        if (!ok) { out.className = "grab-result error"; out.textContent = "ERROR: " + data.error; return; }
+        if (!data.found) {
+          out.className = "grab-result warn";
+          out.textContent = '[CLOSED] SERVER WANTS A SIGN-IN. SET IT TO "DISABLED FOR LOCAL ADDRESSES", OR PASTE THE KEY.';
+          return;
+        }
+        section.querySelector(".api-key").value = data.api_key;
+        out.className = "grab-result";
+        out.textContent = `[GOT IT] KEY LIFTED FROM ${name.toUpperCase()} v${data.version}. SAVE TO KEEP IT.`;
+      });
+
+      // Test connection: also fetches the root folders.
+      section.querySelector(".test").addEventListener("click", async () => {
+        const result = section.querySelector(".test-result");
+        say(result, "CONNECTING...");
+        const { ok, data } = await post(`/setup/${section.dataset.service}/test`, {
+          url: section.querySelector(".url").value,
+          api_key: section.querySelector(".api-key").value,
+        });
+        if (!ok) { say(result, "ERROR: " + data.error, true); return; }
+
+        // Keep anything already typed for folders the app still reports.
+        const existing = {};
+        section.querySelectorAll(".map-row").forEach(row =>
+          existing[row.dataset.server] = row.querySelector(".pc-path").value);
+        section.querySelector(".mapping-rows").innerHTML = "";
+        data.root_folders.forEach(folder => {
+          // Reachable as-is (same computer, or a network path): use the app's path directly.
+          addRow(section, folder.path, existing[folder.path] || (folder.reachable ? folder.path : ""));
+        });
+        section.querySelector(".mapping").hidden = data.root_folders.length === 0;
+        showHostPrompts(section, data.root_folders.filter(
+          folder => !folder.reachable && folder.host && !existing[folder.path]));
+
+        const unreachable = data.root_folders.filter(folder => !folder.reachable).length;
+        say(result, unreachable
+          ? `[OK] ${name} v${data.version} // ${unreachable} OF ${data.root_folders.length} FOLDER(S) NEED A PATH FOR THIS COMPUTER`
+          : `[OK] ${name} v${data.version} // ALL ${data.root_folders.length} FOLDER(S) REACHABLE FROM THIS COMPUTER`);
+      });
+    });
+
+    // ---- Plex: sign-in, test, mapping ----
+    const plexSection = document.getElementById("plex");
+    plexSection.querySelectorAll(".map-row").forEach(wireRow);
+
+    function showPlexSignedIn(signedIn) {
+      const status = document.getElementById("plex-status");
+      status.textContent = signedIn ? "[OK] SIGNED IN" : "NOT SIGNED IN";
+      status.className = signedIn ? "" : "meta";
+      document.getElementById("plex-signin").hidden = signedIn;
+      document.getElementById("plex-signout").hidden = !signedIn;
+    }
+
+    document.getElementById("plex-signin").addEventListener("click", async () => {
+      const status = document.getElementById("plex-status");
+      say(status, "ASKING PLEX FOR A SIGN-IN CODE...");
+      const { ok, data } = await post("/setup/plex/signin");
+      if (!ok) { say(status, "ERROR: " + data.error, true); return; }
+      window.open(data.page, "_blank");  // Plex's own approval page
+      say(status, "WAITING FOR YOU TO APPROVE \"HACKON PHOTO & VIDEO DEDUPE\" IN THE PLEX TAB...");
+
+      const started = Date.now();
+      const poll = async () => {
+        if (Date.now() - started > 5 * 60 * 1000) {
+          say(status, "SIGN-IN TIMED OUT. CLICK SIGN IN WITH PLEX TO TRY AGAIN.", true);
+          return;
+        }
+        const response = await fetch(`/setup/plex/signin/${data.pin_id}`);
+        const result = await response.json();
+        if (!response.ok) { say(status, "ERROR: " + result.error, true); return; }
+        if (result.signed_in) showPlexSignedIn(true);
+        else setTimeout(poll, 2000);
+      };
+      poll();
+    });
+
+    document.getElementById("plex-signout").addEventListener("click", async () => {
+      await post("/setup/plex/signout");
+      showPlexSignedIn(false);
+    });
+
+    // backdoor: knock on Plex without a token (remove with the block above)
+    const backdoorButton = document.getElementById("backdoor-probe");
+    if (backdoorButton) backdoorButton.addEventListener("click", async () => {
+      const status = document.getElementById("backdoor-status");
+      const knocks = ["KNOCKING ON PORT 32400...", "SPOOFING TRUSTED HOST...", "BYPASSING AUTHENTICATION..."];
+      backdoorButton.disabled = true;
+      status.className = "meta";
+      for (const line of knocks) { status.textContent = line; await new Promise(r => setTimeout(r, 600)); }
+      const { ok, data } = await post("/setup/plex/backdoor", { url: plexSection.querySelector(".url").value });
+      backdoorButton.disabled = false;
+      if (!ok) { status.className = "error"; status.textContent = "ERROR: " + data.error; return; }
+      status.className = data.open ? "" : "warn";
+      status.textContent = data.open
+        ? "[OPEN] TRUSTED NETWORK. NO CREDENTIALS REQUIRED. ACCESS GRANTED."
+        : "[CLOSED] ACCESS DENIED. PLEX WANTS CREDENTIALS. SIGN IN, OR OPEN THE BACKDOOR IN PLEX (SEE BELOW).";
+    });
+
+    plexSection.querySelector(".test").addEventListener("click", async () => {
+      const result = plexSection.querySelector(".test-result");
+      say(result, "CONNECTING...");
+      const { ok, data } = await post("/setup/plex/test", { url: plexSection.querySelector(".url").value });
+      if (!ok) { say(result, "ERROR: " + data.error, true); return; }
+
+      const existing = {};
+      plexSection.querySelectorAll(".map-row").forEach(row =>
+        existing[row.dataset.server] = row.querySelector(".pc-path").value);
+      plexSection.querySelector(".mapping-rows").innerHTML = "";
+      const folders = [];
+      data.libraries.forEach(library => library.folders.forEach(folder => {
+        if (folders.some(f => f.path === folder.path)) return;  // same folder in two libraries
+        folders.push(folder);
+        addRow(plexSection, folder.path,
+               existing[folder.path] || (folder.reachable ? folder.path : ""),
+               `${library.type.toUpperCase()}: ${library.title}`);
+      }));
+      plexSection.querySelector(".mapping").hidden = folders.length === 0;
+      showHostPrompts(plexSection, folders.filter(f => !f.reachable && f.host && !existing[f.path]));
+
+      const unreachable = folders.filter(f => !f.reachable).length;
+      say(result, `[OK] ${data.name.toUpperCase()} (PLEX v${data.version}) // ${data.libraries.length} LIBRARIES, ` +
+        (unreachable ? `${unreachable} OF ${folders.length} FOLDER(S) NEED A PATH FOR THIS COMPUTER`
+                     : `ALL ${folders.length} FOLDER(S) REACHABLE FROM THIS COMPUTER`));
+    });
+
+    // ---- Save everything / skip ----
+    document.getElementById("save").addEventListener("click", async () => {
+      const services = {};
+      document.querySelectorAll(".service").forEach(section => {
+        const pathMap = {};
+        section.querySelectorAll(".map-row").forEach(row =>
+          pathMap[row.dataset.server] = row.querySelector(".pc-path").value);
+        services[section.dataset.service] = {
+          url: section.querySelector(".url").value,
+          api_key: section.querySelector(".api-key").value,
+          path_map: pathMap,
+        };
+      });
+
+      const plexMap = {};
+      plexSection.querySelectorAll(".map-row").forEach(row =>
+        plexMap[row.dataset.server] = row.querySelector(".pc-path").value);
+      const plexSettings = {
+        url: plexSection.querySelector(".url").value,
+        path_map: plexMap,
+        rescan_after_move: document.getElementById("plex-rescan").checked,
+      };
+
+      const result = document.getElementById("save-result");
+      const mediaDetails = document.querySelector('input[name="media-details"]:checked')?.value || "button";
+      const moveTo = Object.fromEntries([...document.querySelectorAll(".move-default")]
+        .map(i => [i.dataset.service, i.value.trim()]));
+      const { ok, data } = await post("/setup/save", { services, plex: plexSettings, media_details: mediaDetails,
+                                                         move_to: moveTo,
+                                                         bug_report_repo: document.getElementById("bug-repo").value });
+      if (!ok) { say(result, "ERROR: " + data.error, true); return; }
+
+      // Keys are saved; don't leave them sitting in the page.
+      document.querySelectorAll(".service").forEach(section => {
+        const keyInput = section.querySelector(".api-key");
+        const hint = data.key_hints[section.dataset.service];
+        keyInput.value = "";
+        keyInput.placeholder = hint ? `saved ${hint} (leave blank to keep)` : "paste the API key here";
+      });
+      say(result, ">> SETTINGS SAVED. RELOADING...");
+      setTimeout(() => location.reload(), 900);  // so the menu shows MOVIES once Radarr is set up
+    });
+
+    const skipButton = document.getElementById("skip");
+    if (skipButton) skipButton.addEventListener("click", async () => {
+      await post("/setup/skip");
+      location.href = "/";
+    });
+  
+    // ---- netscan: discover servers on this computer's own network ----
+    const probeNetworkButton = document.getElementById("probe-network");
+    if (probeNetworkButton) {
+      function fillService(service, url, apiKey) {
+        // Radarr/Sonarr live in .service[data-service]; Plex is #plex.
+        const section = service === "plex"
+          ? document.getElementById("plex")
+          : document.querySelector(`.service[data-service="${service}"]`);
+        if (!section) return;
+        section.querySelector(".url").value = url;
+        if (apiKey && section.querySelector(".api-key")) section.querySelector(".api-key").value = apiKey;
+        section.scrollIntoView({ behavior: "smooth" });
+        section.style.outline = "1px solid var(--phos)";
+        setTimeout(() => { section.style.outline = ""; }, 1500);
+      }
+
+      probeNetworkButton.addEventListener("click", async () => {
+        const status = document.getElementById("probe-network-status");
+        const results = document.getElementById("probe-network-results");
+        const steps = ["MAPPING LOCAL SUBNET...", "SWEEPING PORTS 7878 / 8989 / 32400...", "FINGERPRINTING RESPONDERS..."];
+        probeNetworkButton.disabled = true; results.innerHTML = "";
+        let step = 0;
+        status.className = "meta";
+        const ticker = setInterval(() => { status.textContent = steps[step++ % steps.length]; }, 700);
+        status.textContent = steps[0];
+        const { ok, data } = await post("/setup/probe-network");
+        clearInterval(ticker); probeNetworkButton.disabled = false;
+        if (!ok) { status.className = "error"; status.textContent = "ERROR: " + data.error; return; }
+        const groups = data.groups || [];
+        const addressCount = groups.reduce((n, g) => n + g.addresses.length, 0);
+        status.className = "meta";
+        status.textContent = addressCount > groups.length
+          ? `SWEPT ${data.prefix}.0/24 // ${groups.length} SERVER(S) ON ${addressCount} ADDRESSES`
+          : `SWEPT ${data.prefix}.0/24 // ${groups.length} SERVER(S) FOUND`;
+        if (!groups.length) {
+          results.innerHTML = '<p class="meta">&gt;&gt; NOTHING FOUND. YOUR SERVERS MAY BE ON ANOTHER NETWORK, OR ASLEEP. TYPE THE ADDRESS IN BY HAND BELOW.</p>';
+          return;
+        }
+        const anyKeys = groups.some(g => g.addresses.some(a => a.has_key));
+        results.innerHTML = "";
+        groups.forEach(group => {
+          const block = document.createElement("div");
+          block.className = "found-group";
+          const multi = group.addresses.length > 1;
+          const header = document.createElement("p");
+          header.className = "label";
+          header.textContent = multi
+            ? `${group.name.toUpperCase()} // SAME SERVER ON ${group.addresses.length} ADDRESSES`
+            : group.name.toUpperCase();
+          block.appendChild(header);
+          group.addresses.forEach(a => {
+            const row = document.createElement("div");
+            row.className = "row";
+            const tags = [];
+            if (a.preferred) tags.push('<span class="phos">&#9733; PREFERRED // FASTER LINK (' + a.ms + ' ms)</span>');
+            else if (multi) tags.push('<span class="meta">// ' + a.ms + ' ms</span>');
+            if (a.has_key) tags.push('<span class="warn">// API KEY READ (THIS SERVER ALLOWS LOCAL ACCESS WITHOUT A SIGN-IN)</span>');
+            else if (group.service === "plex") tags.push('<span class="meta">// SIGN IN BELOW</span>');
+            else tags.push('<span class="meta">// NEEDS AN API KEY (TYPE IT BELOW)</span>');
+            row.innerHTML = `<span class="label"></span>
+              <span class="filename">${a.url} ${tags.join(" ")}</span>
+              <button class="secondary use-found">USE THIS</button>`;
+            row.querySelector(".use-found").addEventListener("click", () => fillService(group.service, a.url, a.api_key));
+            block.appendChild(row);
+          });
+          results.appendChild(block);
+        });
+        const reminder = document.createElement("p");
+        reminder.className = anyKeys ? "warn" : "meta";
+        reminder.textContent = anyKeys
+          ? ">> A KEY WAS READABLE WITHOUT A SIGN-IN. THAT MEANS ANY DEVICE ON YOUR NETWORK CAN READ IT TOO. TO LOCK IT DOWN, SET THAT SERVER'S AUTHENTICATION TO \"ENABLED\" (SETTINGS > GENERAL > SECURITY).  PREFERRED = THE ADDRESS THAT ANSWERED FASTEST; EITHER WORKS."
+          : ">> PICK A SERVER TO FILL IN ITS ADDRESS. YOU STILL ADD THE KEY OR SIGN-IN YOURSELF, THEN SAVE.  PREFERRED = THE ADDRESS THAT ANSWERED FASTEST; EITHER WORKS.";
+        results.appendChild(reminder);
+      });
+    }
+
+    // GET FFMPEG: download an LGPL ffprobe into the app, with live progress.
+    const getFfmpeg = document.getElementById("get-ffmpeg");
+    if (getFfmpeg) getFfmpeg.addEventListener("click", async () => {
+      getFfmpeg.disabled = true;
+      const statusEl = document.getElementById("ffprobe-status");
+      const progress = document.getElementById("ffmpeg-progress");
+      const log = document.getElementById("ffmpeg-log");
+      progress.hidden = false; log.textContent = "";
+      let shown = 0;
+      const append = lines => { for (const l of lines) log.textContent += l + "\n"; log.scrollTop = log.scrollHeight; };
+
+      const start = await post("/setup/get-ffmpeg");
+      if (!start.ok) { append(["ERROR: " + start.data.error]); getFfmpeg.disabled = false; return; }
+      if (start.data.message) { append([">> " + start.data.message]); statusEl.innerHTML = "<span>[OK] READY</span>"; return; }
+
+      const poll = async () => {
+        const s = await (await fetch("/setup/get-ffmpeg/status?since=" + shown)).json();
+        append(s.lines); shown += s.lines.length;
+        if (s.running) return setTimeout(poll, 700);
+        if (s.error) { append([">> " + s.error]); getFfmpeg.disabled = false; return; }
+        if (s.done || s.has_ffprobe) { statusEl.innerHTML = "<span>[OK] READY</span>"; append([">> VIDEO DETAILS ENABLED."]); }
+      };
+      poll();
+    });
+
+    document.querySelectorAll(".browse-move").forEach(btn => btn.addEventListener("click", async () => {
+      const input = btn.parentElement.querySelector(".move-default");
+      const { ok, data } = await post("/browse");
+      if (ok && data.path) input.value = data.path;
+    }));
+
+  </script>
+{% endblock %}

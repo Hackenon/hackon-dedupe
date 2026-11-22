@@ -1,0 +1,570 @@
+{% extends "layout.html" %}
+
+{% block subtitle %}
+  <p>{{ page.heading }} :: {{ page.app | upper }} CROSS-CHECK <span class="cursor"></span></p>
+{% endblock %}
+
+{% block main %}
+  {% set folder_mode = results and results.mode == "folder" %}
+  <div class="actions">
+    {% if configured %}
+      <button id="scan-media">&#9654; SCAN WITH {{ page.app | upper }}</button>
+    {% endif %}
+    {% set empties = (results.strays if results else []) | selectattr("kind", "equalto", "empty folder") | list %}
+    {% if needs_details %}
+      {% if has_ffprobe %}
+        <button class="secondary" id="get-details">GET DETAILS FOR {{ needs_details }} FILE{{ "S" if needs_details != 1 }}</button>
+      {% else %}
+        <span class="warn">{{ needs_details }} FILES HAVE NO RESOLUTION/CODEC. INSTALL FFMPEG TO READ THEM: winget install Gyan.FFmpeg</span>
+      {% endif %}
+    {% endif %}
+    <span class="meta">Scans only read. Files move only when you press one of the MOVE buttons.</span>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <span class="label">FOLDER:</span>
+      <input type="text" id="scan-folder-path" spellcheck="false"
+             placeholder="C:\path\to\{{ page.things }}s  or  \\server\share\folder"
+             value="{{ results.folder if folder_mode else '' }}">
+      <button class="secondary" id="browse-folder">BROWSE...</button>
+      <button id="scan-folder">&#9654; SCAN FOLDER</button>
+    </div>
+    <p class="meta">// SCAN ANY FOLDER OF {{ page.things | upper }}S, NO {{ page.app | upper }} NEEDED. FINDS THE SAME
+       {{ page.one_thing | upper }} IN SEVERAL FILES, IDENTICAL FILES{{ ", AND SEVERAL VIDEOS IN ONE MOVIE FOLDER" if page.one_thing == "movie" }}.
+       YOU CHOOSE WHAT TO KEEP.</p>
+    <span id="folder-message" class="error"></span>
+  </div>
+
+  {% if not configured %}
+    <div class="panel">
+      <p>&gt;&gt; TIP: CONNECT {{ page.app | upper }} FOR SMARTER RESULTS</p>
+      <p class="meta">{{ page.about }}</p>
+      <p><a href="/setup">&gt; SET UP {{ page.app | upper }} IN SETUP</a></p>
+    </div>
+  {% endif %}
+
+
+
+    <div id="terminal-panel" hidden>
+      <h2 class="fixed">Scan in progress</h2>
+      <pre class="terminal" id="terminal"></pre>
+    <p id="bug-link" hidden></p>
+    </div>
+
+    {% if results %}
+      {% set c = results.counts %}
+
+      <div class="panel action-bar" id="move-bar">
+        <button id="move-ticked">&#9654; MOVE <span id="move-count">{{ to_move }}</span> TICKED &rarr; {% if move_default %}DEFAULT{% else %}_REVIEW{% endif %}</button>
+        <button class="secondary" id="move-location">MOVE TICKED TO LOCATION...</button>
+        {% if can_undo %}<button class="secondary" id="undo-move">UNDO LAST MOVE</button>{% endif %}
+        <span class="warn" id="tracked-warn" {{ "hidden" if not tracked_to_move }}>
+          !! {{ tracked_to_move }} TICKED FILE(S) ARE STILL TRACKED BY {{ page.app | upper }}. MOVING THEM MAY MAKE {{ page.app | upper }} RE-DOWNLOAD THEM.</span>
+        <span id="move-result" class="meta"></span>
+        <p class="meta">// DEFAULT MOVES GO TO {% if move_default %}{{ move_default }}{% else %}a _review folder inside each root folder, and _review/* is added to .plexignore{% endif %} (nothing is deleted{% if not move_default %}; set a default in SETUP &gt; OPTIONS{% endif %}).
+           "TO LOCATION" browses to a folder to relocate strays (e.g. fix the library). {{ page.app | upper }}{{ " AND PLEX" if page.app }} RESCAN AFTER. UNDO PUTS THE LAST BATCH BACK.</p>
+      </div>
+
+      <h2 class="fixed">Summary <small>scanned {{ results.scanned_at.replace("T", " ") }}</small></h2>
+      <div class="panel">
+        <table class="stats">
+          {% if folder_mode %}
+            <tr><td>FOLDER</td><td class="filename">{{ results.folder }}</td></tr>
+            <tr><td>VIDEO FILES</td><td>{{ c[page.count_key] }}</td></tr>
+          {% else %}
+            <tr><td>{{ page.heading }} IN {{ page.app | upper }}</td><td>{{ c[page.count_key] }}</td></tr>
+          {% endif %}
+          {% if folder_mode %}
+            <tr><td>POSSIBLE DUPLICATES</td><td>{{ c.with_extra_files }} groups / {{ c.extra_files }} extra files / up to {{ c.extra_bytes | size }} to save</td></tr>
+          {% else %}
+            <tr><td>WITH EXTRA VIDEO FILES</td><td>{{ c.with_extra_files }} {{ page.group_label }} / {{ c.extra_files }} files / {{ c.extra_bytes | size }}</td></tr>
+            <tr><td>STRAY FOLDERS / FILES</td><td>{{ c.strays }}</td></tr>
+          {% endif %}
+          {% if c.missing_folders %}<tr><td>FOLDER MISSING</td><td class="warn">{{ c.missing_folders }} ({{ page.app }} has files, but the folder isn't there)</td></tr>{% endif %}
+          {% if c.unmapped %}<tr><td>NOT CHECKED</td><td class="warn">{{ c.unmapped }} ({{ "listed below" if results.unmapped else "scan again to see which" }})</td></tr>{% endif %}
+        </table>
+      </div>
+
+      {% if results.unmapped %}
+        <h2>Not checked <small>{{ results.unmapped | length }}</small></h2>
+        <div class="group">
+          <p class="meta">// {{ page.app | upper }} SAYS THESE LIVE IN A FOLDER THIS APP CAN'T TRANSLATE TO A PATH ON THIS COMPUTER.
+             FIX: MAP THAT ROOT FOLDER IN SETUP, OR IN {{ page.app | upper }} EDIT THE {{ page.one_thing | upper }}'S PATH
+             SO IT'S INSIDE ONE OF ITS ROOT FOLDERS. THEN SCAN AGAIN.</p>
+          <table class="movie-files">
+            <tr><th>{{ page.one_thing | upper if page.one_thing == "movie" else "SHOW" }}</th><th>PATH IN {{ page.app | upper }}</th><th>LIKELY REASON</th></tr>
+            {% for item in results.unmapped %}
+              <tr>
+                <td>{{ item.title }}{% if item.year %} ({{ item.year }}){% endif %}</td>
+                <td class="filename">{{ item.server_path }}</td>
+                <td>{{ item.reason }}</td>
+              </tr>
+            {% endfor %}
+          </table>
+        </div>
+      {% endif %}
+
+      <h2>{{ "Possible duplicates" if folder_mode else "Extra copies" }} <small>{{ results.groups | length }} {{ "groups" if folder_mode else page.group_label }}</small></h2>
+      {% for group in results.groups %}
+        <div class="group">
+          <h3>{{ group.title }}{% if group.year %} ({{ group.year }}){% endif %}{% if group.episode %} :: {{ "EPISODE UNKNOWN" if group.episode == "?" else group.episode }}{% endif %} :: {{ group.files | length }} files</h3>
+          {% if group.reasons %}
+            <p class="meta">// GROUPED BECAUSE: {{ group.reasons | join(", ") | upper }}</p>
+          {% endif %}
+          {% if not group.has_tracked and not folder_mode %}
+            <p class="warn">!! {{ page.app | upper }} HAS NO FILE FOR THIS {{ page.one_thing | upper }}. NONE OF THESE ARE TRACKED.</p>
+          {% endif %}
+          {% set kept = group.files | selectattr("keep") | rejectattr("moved_to") | list | length %}
+          <p class="warn group-empty" data-group="{{ group.id }}" {{ "hidden" if kept }}>!! NOTHING KEPT. THIS {{ page.one_thing | upper }} WILL BE SKIPPED (NEVER MOVES EVERY COPY).</p>
+          <table class="movie-files">
+            <tr><th></th><th></th><th>FILE</th><th>SIZE</th><th>RES</th><th>CODEC</th><th>SOURCE</th><th>LENGTH</th></tr>
+            {% for file in group.files %}
+              <tr class="{{ 'tracked' if file.tracked }} {{ 'moved' if file.moved_to }}" data-group="{{ group.id }}" data-index="{{ loop.index0 }}">
+                <td class="playcell">
+                  {% set pkey = group.id ~ ":" ~ loop.index0 %}
+                  {% if pkey in unplayable %}
+                    <button class="play-btn unplayable" type="button" disabled title="Can't play this file (browser and VLC both failed)" aria-label="Can't play">
+                      <svg class="icon-slash" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><line x1="3.6" y1="3.6" x2="12.4" y2="12.4"/></svg>
+                    </button>
+                  {% else %}
+                    <button class="play-btn" type="button" data-play-url="/{{ kind }}/play/{{ group.id }}/{{ loop.index0 }}" data-vlc-url="/{{ kind }}/play-vlc/{{ group.id }}/{{ loop.index0 }}" data-unplayable-url="/{{ kind }}/play-unplayable/{{ group.id }}/{{ loop.index0 }}" data-browser="{{ 1 if file.name | browser_playable else 0 }}" data-name="{{ file.name }}" title="Play to identify this file" aria-label="Play">
+                      <svg class="icon-play" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 2 L14 8 L3 14 Z"/></svg>
+                    </button>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if file.moved_to %}<span class="tag">MOVED</span>
+                  {% else %}
+                    <button class="toggle media-toggle" data-group="{{ group.id }}" data-index="{{ loop.index0 }}" data-tracked="{{ 1 if file.tracked else 0 }}">
+                      {{ "[X] KEEP" if file.keep else "[ ] MOVE" }}</button>
+                  {% endif %}
+                </td>
+                <td class="filename">{{ file.name }}{% if file.tracked %}<br><span class="meta">// TRACKED BY {{ page.app | upper }}</span>{% endif %}</td>
+                <td>{{ file.size | size }}</td>
+                <td>{{ file.resolution or "?" }}</td>
+                <td>{{ file.codec or "?" }}</td>
+                <td>{{ file.source or "?" }}</td>
+                <td>{{ file.length or "" }}</td>
+              </tr>
+            {% endfor %}
+          </table>
+          <p class="meta folder">{{ group.folder }}</p>
+        </div>
+      {% else %}
+        <p class="meta">NO EXTRA COPIES FOUND.</p>
+      {% endfor %}
+
+      {% if not folder_mode %}
+      <h2>Stray folders &amp; loose files <small>{{ results.strays | rejectattr("kind","equalto","empty folder") | list | length }}</small></h2>
+      {% endif %}
+      {% if folder_mode %}
+      {% elif results.strays %}
+        <div class="group">
+          <p class="meta">// TICK A STRAY TO MOVE THE WHOLE FOLDER (OR LOOSE FILE). EMPTY FOLDERS ARE IN THEIR OWN SECTION BELOW.</p>
+          <table class="movie-files">
+            <tr><th></th><th></th><th>NAME</th><th>VIDEOS</th><th>SIZE</th><th>QUALITY</th><th>SUGGESTED MATCH</th></tr>
+            {% for stray in results.strays %}
+              {% if stray.kind != "empty folder" %}
+              <tr class="{{ 'moved' if stray.moved_to }}" data-stray="{{ stray.path }}">
+                <td class="playcell">
+                  {% if loop.index0 in unplayable_strays %}
+                    <button class="play-btn unplayable" type="button" disabled title="Can't play this file (browser and VLC both failed)" aria-label="Can't play">
+                      <svg class="icon-slash" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><line x1="3.6" y1="3.6" x2="12.4" y2="12.4"/></svg>
+                    </button>
+                  {% else %}
+                    {% set sbrowser = (stray.name | browser_playable) if stray.kind == "loose file" else true %}
+                    <button class="play-btn" type="button" data-play-url="/{{ kind }}/play-stray/{{ loop.index0 }}" data-vlc-url="/{{ kind }}/play-stray-vlc/{{ loop.index0 }}" data-unplayable-url="/{{ kind }}/play-stray-unplayable/{{ loop.index0 }}" data-browser="{{ 1 if sbrowser else 0 }}" data-name="{{ stray.name }}" title="Play to identify this file" aria-label="Play">
+                      <svg class="icon-play" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M3 2 L14 8 L3 14 Z"/></svg>
+                    </button>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if stray.moved_to %}<span class="tag">MOVED</span>
+                  {% else %}
+                    <button class="toggle stray-toggle" data-path="{{ stray.path }}">{{ "[X] MOVE" if stray.move else "[ ] MOVE" }}</button>
+                  {% endif %}
+                </td>
+                <td class="filename">{{ stray.name }}{% if stray.kind == "loose file" %} <span class="meta">// LOOSE FILE</span>{% endif %}
+                  <br><span class="meta filename">AT: {{ stray.path }}</span></td>
+                <td>{% if stray.videos %}{{ stray.videos }}{% else %}<span class="meta">0 // EMPTY</span>{% endif %}</td>
+                <td>{{ stray.size | size }}</td>
+                <td>{{ [stray.details.resolution, stray.details.codec, stray.details.source, stray.details.length] | select | join(" / ") or "?" }}</td>
+                <td>
+                  {% if stray.suggestion %}
+                    {{ stray.suggestion.title }} ({{ stray.suggestion.year }})
+                    <span class="meta">// {{ stray.suggestion.confidence | upper }}</span>
+                    {% if stray.suggestion.folder %}
+                      <br><span class="meta filename">{{ page.app | upper }} KEEPS IT IN: {{ stray.suggestion.folder }}</span>
+                    {% endif %}
+                  {% else %}<span class="meta">NO MATCH</span>{% endif %}
+                </td>
+              </tr>
+              {% endif %}
+            {% endfor %}
+          </table>
+        </div>
+      {% else %}
+        <p class="meta">NO STRAY FOLDERS.</p>
+      {% endif %}
+
+
+
+      {% if empties %}
+      <h2>Empty folders <small>{{ empties | length }}*</small></h2>
+      <div class="group">
+        <p class="meta">// FOLDERS WITH NO VIDEO INSIDE. COMPLETELY EMPTY ONES ARE TICKED FOR YOU; THOSE THAT STILL HOLD FILES
+          (SUBTITLES, POSTERS, .NFO) ARE SHOWN AND LEFT UNTICKED. DELETING IS PERMANENT (NO UNDO).
+          <br>// * COUNT AT TIME OF LAST SCAN.</p>
+        <div class="row">
+          <button class="secondary" id="empties-all">SELECT ALL</button>
+          <button class="secondary" id="empties-none">SELECT NONE</button>
+          <span class="meta" id="empties-count"></span>
+          <button id="empties-delete">DELETE SELECTED PERMANENTLY</button>
+          <span id="empties-result"></span>
+        </div>
+        <table class="movie-files" id="empties-table"></table>
+      </div>
+      {% endif %}
+
+      {% if results.missing_folders %}
+        <h2>Folder missing <small>{{ results.missing_folders | length }}</small></h2>
+        <div class="group">
+          {% for movie in results.missing_folders %}
+            <p class="filename">{{ movie.title }} ({{ movie.year }}) <span class="meta">// {{ movie.folder }}</span></p>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% else %}
+      <p class="meta">NO {{ page.heading }} SCAN YET. SCAN A FOLDER{{ " OR SCAN WITH " ~ page.app | upper if configured }}.</p>
+    {% endif %}
+
+  <div id="play-modal" class="play-modal" hidden>
+    <div class="play-frame">
+      <div class="play-bar">
+        <span id="play-title" class="play-title"></span>
+        <button id="play-close" class="play-close secondary" type="button">[ X ] CLOSE</button>
+      </div>
+      <video id="play-video" class="play-video" controls playsinline></video>
+      <p id="play-status" class="play-status"></p>
+    </div>
+  </div>
+
+  <script>
+    const scanButton = document.getElementById("scan-media");
+    const terminal = document.getElementById("terminal");
+    let linesShown = 0;
+
+    // One place that owns whether the scan controls are usable, so none of the
+    // scan buttons can be triggered while any scan is already running.
+    function setScanRunning(running) {
+      document.querySelectorAll("#scan-media, #scan-folder, #get-details")
+        .forEach(button => { if (button) button.disabled = running; });
+    }
+
+    function print(line, cssClass) {
+      const span = document.createElement("span");
+      span.textContent = line + "\n";
+      if (cssClass) span.className = cssClass;
+      terminal.appendChild(span);
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    let pollFails = 0;
+    async function poll() {
+      let status;
+      try {
+        status = await (await fetch(`/scan/status?since=${linesShown}`)).json();
+        pollFails = 0;  // a good reply clears the failure count
+      } catch (e) {
+        // A hiccup while the scan is running: retry twice before giving up.
+        if (++pollFails <= 2) { setTimeout(poll, 1000); return; }
+        theater.finish(false, "LOST CONNECTION TO THE SCAN \u2014 RELOAD TO RECONNECT");
+        setScanRunning(false);
+        return;
+      }
+      status.lines.forEach(line => theater.feed(line));
+      linesShown += status.lines.length;
+      if (status.running) return setTimeout(poll, 500);
+      if (status.error) {
+        theater.finish(false, status.error_id ? `ERROR LOGGED AS #${status.error_id}` : "*** SCAN FAILED ***");
+        if (status.error_id) {
+          const link = document.getElementById("bug-link");
+          link.innerHTML = `&gt;&gt; <a href="/bug/${status.error_id}">REPORT THIS BUG</a>`;
+          link.hidden = false;
+        }
+        setScanRunning(false);
+        return;
+      }
+      theater.finish(true, "LOADING RESULTS...");
+      setTimeout(() => location.reload(), 1200);
+    }
+
+    // ---- Remove empty stray folders ----
+    const KIND = {{ kind | tojson }};
+    // ---- Empty folders (auto-populated section) ----
+    const emptiesTable = document.getElementById("empties-table");
+    if (emptiesTable) {
+      const fmtSize = bytes => { for (const u of ["B","KB","MB","GB"]) { if (bytes < 1000) return u === "B" ? bytes + " B" : bytes.toFixed(1) + " " + u; bytes /= 1000; } return bytes.toFixed(2) + " TB"; };
+      const updateEmptiesCount = () => {
+        const ticked = emptiesTable.querySelectorAll("input:checked").length;
+        const total = emptiesTable.querySelectorAll("input").length;
+        document.getElementById("empties-count").textContent = ticked + " OF " + total + " SELECTED";
+        document.getElementById("empties-delete").disabled = ticked === 0;
+      };
+      (async () => {
+        emptiesTable.innerHTML = "<tr><td>CHECKING FOLDERS...</td></tr>";
+        const data = await (await fetch(`/${KIND}/empty-folders`)).json();
+        emptiesTable.innerHTML = "<tr><th></th><th>FOLDER</th><th>STILL INSIDE</th></tr>";
+        data.folders.forEach(folder => {
+          const row = document.createElement("tr");
+          row.innerHTML = `<td><input type="checkbox"></td><td class="filename"></td><td class="meta"></td>`;
+          const box = row.querySelector("input");
+          box.checked = folder.files === 0;
+          box.dataset.path = folder.path;
+          box.addEventListener("change", updateEmptiesCount);
+          row.children[1].textContent = folder.path;
+          if (folder.files) {
+            const more = folder.files - folder.names.length;
+            row.children[2].textContent = `${folder.files} file(s), ${fmtSize(folder.size)}:\n` + folder.names.map(n => "  " + n).join("\n") + (more > 0 ? `\n  ...and ${more} more` : "");
+            row.children[2].style.whiteSpace = "pre-wrap";
+          } else { row.children[2].textContent = "nothing (completely empty)"; }
+          emptiesTable.appendChild(row);
+        });
+        if (!data.folders.length) emptiesTable.innerHTML = "<tr><td>NO EMPTY FOLDERS LEFT.</td></tr>";
+        updateEmptiesCount();
+      })();
+      const setAllEmpties = checked => { emptiesTable.querySelectorAll("input").forEach(b => b.checked = checked); updateEmptiesCount(); };
+      document.getElementById("empties-all").addEventListener("click", () => setAllEmpties(true));
+      document.getElementById("empties-none").addEventListener("click", () => setAllEmpties(false));
+      document.getElementById("empties-delete").addEventListener("click", async () => {
+        const paths = [...emptiesTable.querySelectorAll("input:checked")].map(b => b.dataset.path);
+        if (!paths.length) return;
+        if (!confirm(`Permanently delete ${paths.length} folder(s) and everything in them?\n\nThis cannot be undone.`)) return;
+        const result = document.getElementById("empties-result");
+        result.textContent = "DELETING...";
+        const data = await (await fetch(`/${KIND}/empty-folders/delete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths }) })).json();
+        result.textContent = `>> DELETED ${data.deleted} FOLDER(S)` + (data.skipped.length ? ` // SKIPPED ${data.skipped.length}` : "");
+        setTimeout(() => location.reload(), data.skipped.length ? 4000 : 1500);
+      });
+    }
+
+    // Start a scan (with Radarr/Sonarr, or of a folder) and show its log.
+    async function startScan(url, body, command) {
+      const response = await fetch(url, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}),
+      });
+      const data = await response.json();
+      document.getElementById("terminal-panel").hidden = false;
+      document.getElementById("bug-link").hidden = true;
+      terminal.textContent = "";
+      linesShown = 0;
+      if (!response.ok) { print("ERROR: " + data.error, "error"); return; }
+      setScanRunning(true);
+      theater.start(terminal, command);
+      poll();
+    }
+
+    if (scanButton) scanButton.addEventListener("click", () =>
+      startScan({{ page.scan_url | tojson }}, {}, {{ ("C:\\> HACKON.EXE /" ~ page.heading) | tojson }}));
+
+    document.getElementById("get-details")?.addEventListener("click", () =>
+      startScan(`/${KIND}/details`, {}, "C:\\> FFPROBE.EXE /DETAILS /MISSING-ONLY"));
+
+    const folderInput = document.getElementById("scan-folder-path");
+    document.getElementById("scan-folder").addEventListener("click", () =>
+      startScan(`/${KIND}/scan-folder`, { folder: folderInput.value },
+                `C:\\> HACKON.EXE /${KIND.toUpperCase()} "${folderInput.value}"`));
+
+    document.getElementById("browse-folder").addEventListener("click", async () => {
+      const message = document.getElementById("folder-message");
+      message.textContent = "WAITING FOR FOLDER PICKER... (it may open behind this window)";
+      const response = await fetch("/browse", { method: "POST" });
+      const data = await response.json();
+      message.textContent = response.ok ? "" : "ERROR: " + data.error;
+      if (response.ok && data.path) folderInput.value = data.path;
+    });
+
+    // ---- Keep/Move, strays, MOVE and UNDO (piece 9) ----
+    async function postJSON(url, body) {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+      return { ok: r.ok, data: await r.json() };
+    }
+
+    const moveCount = document.getElementById("move-count");
+    const trackedWarn = document.getElementById("tracked-warn");
+    const appName = KIND === "movies" ? "RADARR" : "SONARR";
+    function refreshMoveBar(data) {
+      if (moveCount) moveCount.textContent = data.to_move;
+      if (trackedWarn) {
+        trackedWarn.hidden = !data.tracked_to_move;
+        trackedWarn.textContent = data.tracked_to_move
+          ? `!! ${data.tracked_to_move} TICKED FILE(S) ARE STILL TRACKED BY ${appName}. MOVING THEM MAY MAKE ${appName} RE-DOWNLOAD THEM.`
+          : "";
+      }
+    }
+
+    // A group's "nothing kept" warning (we never move every copy).
+    function refreshGroupWarning(groupId) {
+      const warn = document.querySelector(`.group-empty[data-group="${groupId}"]`);
+      if (!warn) return;
+      const buttons = document.querySelectorAll(`.media-toggle[data-group="${groupId}"]`);
+      warn.hidden = [...buttons].some(b => b.textContent.includes("KEEP"));
+    }
+
+    document.querySelectorAll(".media-toggle").forEach(button => button.addEventListener("click", async () => {
+      const { ok, data } = await postJSON(`/${KIND}/toggle/${button.dataset.group}/${button.dataset.index}`);
+      if (!ok) return;
+      button.textContent = data.keep ? "[X] KEEP" : "[ ] MOVE";
+      refreshGroupWarning(button.dataset.group);
+      refreshMoveBar(data);
+    }));
+
+    document.querySelectorAll(".stray-toggle").forEach(button => button.addEventListener("click", async () => {
+      const moving = !button.textContent.includes("[X]");
+      const { ok, data } = await postJSON(`/${KIND}/stray-move`, { path: button.dataset.path, move: moving });
+      if (!ok) return;
+      button.textContent = data.move ? "[X] MOVE" : "[ ] MOVE";
+      refreshMoveBar(data);
+    }));
+
+    const trackedMsg = () => (trackedWarn && !trackedWarn.hidden)
+      ? "\n\nSome are still tracked and may be re-downloaded." : "";
+    async function runMove(body, confirmText) {
+      const n = Number(moveCount.textContent);
+      if (!n) { document.getElementById("move-result").textContent = "NOTHING TICKED TO MOVE."; return; }
+      if (!confirm(confirmText + trackedMsg() + "\n\nNothing is deleted; UNDO puts them back.")) return;
+      const result = document.getElementById("move-result");
+      result.className = "meta"; result.textContent = "MOVING...";
+      const { ok, data } = await postJSON(`/${KIND}/move`, body);
+      result.textContent = (data.notes || [data.error || "DONE"]).join(" // ");
+      if (ok) setTimeout(() => location.reload(), 2500);
+    }
+    const moveButton = document.getElementById("move-ticked");
+    if (moveButton) moveButton.addEventListener("click", () => {
+      const n = Number(moveCount.textContent);
+      runMove({ mode: "default" }, `Move ${n} item(s) to the default location?`);
+    });
+    const moveLocation = document.getElementById("move-location");
+    if (moveLocation) moveLocation.addEventListener("click", async () => {
+      const n = Number(moveCount.textContent);
+      if (!n) { document.getElementById("move-result").textContent = "NOTHING TICKED TO MOVE."; return; }
+      document.getElementById("move-result").textContent = "WAITING FOR FOLDER PICKER...";
+      const { ok, data } = await postJSON("/browse");
+      if (!ok || !data.path) { document.getElementById("move-result").textContent = "NO FOLDER CHOSEN."; return; }
+      runMove({ mode: "location", path: data.path }, `Move ${n} item(s) into:\n${data.path}?`);
+    });
+
+    const undoButton = document.getElementById("undo-move");
+    if (undoButton) undoButton.addEventListener("click", async () => {
+      if (!confirm("Undo the last move? Files go back where they were.")) return;
+      const result = document.getElementById("move-result");
+      result.className = "meta"; result.textContent = "UNDOING...";
+      const { ok, data } = await postJSON(`/${KIND}/undo`);
+      result.textContent = (data.notes || [data.error || "DONE"]).join(" // ");
+      if (ok) setTimeout(() => location.reload(), 2500);
+    });
+    // Re-attach to a scan already in progress (switched tabs and came back, or a
+    // scan is running from another page). Reopens the live terminal, resumes
+    // polling, and keeps the scan buttons disabled until it finishes.
+    window.addEventListener("load", async () => {
+      try {
+        const status = await (await fetch("/scan/status?since=0")).json();
+        if (!status.running) return;
+        document.getElementById("terminal-panel").hidden = false;
+        document.getElementById("bug-link").hidden = true;
+        terminal.textContent = "";
+        linesShown = 0;
+        setScanRunning(true);
+        theater.start(terminal, "C:\\> HACKON.EXE  [RECONNECTED TO SCAN IN PROGRESS]");
+        poll();
+      } catch (e) { /* nothing running to resume */ }
+    });
+
+    // ---- PLAY: identify a file. Browser-playable files stream into the frame;
+    // anything else (or a codec the browser chokes on) falls back to VLC's own
+    // window. If neither can play it, remember that and grey the button out.
+    (function () {
+      const modal = document.getElementById("play-modal");
+      if (!modal) return;
+      const video = document.getElementById("play-video");
+      const statusEl = document.getElementById("play-status");
+      const titleEl = document.getElementById("play-title");
+      const closeBtn = document.getElementById("play-close");
+      const SLASH = '<svg class="icon-slash" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><circle cx="8" cy="8" r="6.2"></circle><line x1="3.6" y1="3.6" x2="12.4" y2="12.4"></line></svg>';
+      let current = null;
+
+      function closeModal() {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+        video.hidden = false;
+        modal.hidden = true;
+        statusEl.textContent = "";
+        current = null;
+      }
+      closeBtn.addEventListener("click", closeModal);
+      modal.addEventListener("click", function (e) { if (e.target === modal) closeModal(); });
+      document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !modal.hidden) closeModal(); });
+
+      function disableButton(btn) {
+        if (!btn) return;
+        btn.classList.add("unplayable");
+        btn.disabled = true;
+        btn.title = "Can't play this file (browser and VLC both failed)";
+        btn.setAttribute("aria-label", "Can't play");
+        btn.innerHTML = SLASH;
+      }
+
+      function markUnplayable(ctx) {
+        statusEl.textContent = "// CAN'T PLAY THIS FILE. BUTTON DISABLED.";
+        fetch(ctx.unplayableUrl, { method: "POST" }).catch(function () {});
+        disableButton(ctx.btn);
+        setTimeout(function () { if (current === ctx) closeModal(); }, 2200);
+      }
+
+      function tryVlc(ctx) {
+        statusEl.textContent = "// BROWSER CAN'T PLAY THIS FORMAT — TRYING VLC...";
+        video.hidden = true;
+        fetch(ctx.vlcUrl, { method: "POST" })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (current !== ctx) return;
+            if (d && d.launched) {
+              statusEl.textContent = "// OPENING IN VLC WINDOW...";
+              setTimeout(function () { if (current === ctx) closeModal(); }, 1600);
+            } else {
+              markUnplayable(ctx);
+            }
+          })
+          .catch(function () { if (current === ctx) markUnplayable(ctx); });
+      }
+
+      document.addEventListener("click", function (e) {
+        const btn = e.target.closest(".play-btn");
+        if (!btn || btn.disabled) return;
+        const ctx = {
+          playUrl: btn.dataset.playUrl,
+          vlcUrl: btn.dataset.vlcUrl,
+          unplayableUrl: btn.dataset.unplayableUrl,
+          browser: btn.dataset.browser === "1",
+          btn: btn
+        };
+        current = ctx;
+        titleEl.textContent = btn.dataset.name || "";
+        statusEl.textContent = "";
+        modal.hidden = false;
+        if (!ctx.browser) { tryVlc(ctx); return; }
+        video.hidden = false;
+        video.src = ctx.playUrl;
+        video.load();
+        const p = video.play();
+        if (p && p.catch) p.catch(function () {}); // autoplay may be blocked; controls still work
+      });
+
+      video.addEventListener("error", function () {
+        if (current) tryVlc(current);
+      });
+    })();
+  </script>
+{% endblock %}

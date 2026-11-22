@@ -1,0 +1,144 @@
+{% extends "layout.html" %}
+
+{% block subtitle %}<p>*** SECURITY BREACH: FILE MISSING *** <span class="cursor"></span></p>{% endblock %}
+
+{% block main %}
+  <style>
+    .evidence { border: 1px solid var(--phos); box-shadow: 0 0 12px var(--dim); padding: 10px; margin-top: 14px; }
+    .evidence p { margin: 0 0 8px; }
+    .evidence img, .evidence video {
+      display: block; max-width: 100%; max-height: 65vh; margin: 0 auto;
+      animation: decode 1.6s steps(16) both;  /* "decrypts" from the top down */
+    }
+    @keyframes decode {
+      from { clip-path: inset(0 0 100% 0); filter: grayscale(1) contrast(2); }
+      to   { clip-path: inset(0 0 0 0); filter: none; }
+    }
+    @media (prefers-reduced-motion: reduce) { .evidence img, .evidence video { animation: none; } }
+    .orders { margin-top: 14px; }
+    .recover-list { width: 100%; border-collapse: collapse; }
+    .recover-list th { text-align: left; color: var(--dim); font-weight: normal; padding: 2px 8px 6px 0; }
+    .recover-list td { padding: 2px 8px 2px 0; vertical-align: top; word-break: break-all; }
+    .recover-list td:nth-child(2) { color: var(--dim); }
+    .recover-list tr.target td { background: var(--phos); color: #000; text-shadow: none; }
+    #summary { max-height: 40vh; overflow-y: auto; }
+  </style>
+
+  <h2 class="fixed">Tracing a lost file</h2>
+  <div class="panel">
+    <p>&gt;&gt; {{ file.path }} IS NOT WHERE THE SCAN FOUND IT. HUNTING FOR IT IN {{ folder }}...</p>
+    <pre class="terminal" id="terminal"></pre>
+
+    <div class="evidence" id="evidence" hidden>
+      <p id="evidence-label"></p>
+      {% if is_video %}
+        <video id="evidence-media" controls muted></video>
+      {% else %}
+        <img id="evidence-media" alt="The file that was found">
+      {% endif %}
+    </div>
+
+    <div class="evidence" id="summary" hidden>
+      <p id="summary-label"></p>
+      <table class="recover-list">
+        <thead><tr><th>WAS</th><th></th><th>FOUND AT</th><th>MATCHED BY</th></tr></thead>
+        <tbody id="summary-rows"></tbody>
+      </table>
+      <div id="lost-list" hidden>
+        <p class="error">&gt;&gt; STILL MISSING (NOT FOUND IN THIS FOLDER):</p>
+        <ul id="lost-rows"></ul>
+      </div>
+    </div>
+
+    <div class="orders" id="orders" hidden>
+      <p id="orders-text"></p>
+      <p id="order-buttons" hidden>
+        <button id="recover"></button>
+        <button class="secondary" id="leave">LEAVE THEM</button>
+      </p>
+      <p id="rescan-link" hidden><a href="/">&gt; RESCAN FROM PHOTO SCAN</a></p>
+      <p><a href="/#results">&gt; BACK TO RESULTS</a></p>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    (async function () {
+      const BASE = "/trace/{{ group_id }}/{{ index }}";
+      const terminal = document.getElementById("terminal");
+      const ordersText = document.getElementById("orders-text");
+      const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+      theater.start(terminal, 'C:\\> TRACE.EXE "' + {{ file.path | tojson }} + '"');
+
+      // The sweep itself is quick; the pauses are for drama.
+      const [response] = await Promise.all([fetch(BASE, { method: "POST" }), pause(1500)]);
+      const answer = await response.json();
+      if (!response.ok) {  // a real bug: the notice from layout.html already popped up
+        theater.finish(false, answer.error_id ? `ERROR LOGGED AS #${answer.error_id}` : "*** TRACE FAILED ***");
+        return;
+      }
+      for (const line of answer.story) {
+        theater.feed(">> " + line);
+        await pause(500 + Math.random() * 500);
+      }
+      document.getElementById("orders").hidden = false;
+
+      if (answer.found) {
+        theater.finish(true, "TARGET ACQUIRED. AWAITING ORDERS.");
+        document.getElementById("evidence-label").textContent = `>> VISUAL CONFIRMATION // ${answer.path}`;
+        document.getElementById("evidence-media").src = BASE + "/preview";
+        document.getElementById("evidence").hidden = false;
+      } else {
+        theater.finish(false, "TRACE FAILED.");
+        ordersText.textContent = ">> COULDN'T FIND THIS ONE. IF YOU MOVED OR RENAMED THINGS, RESCAN TO CATCH UP.";
+        document.getElementById("rescan-link").hidden = false;
+      }
+
+      // Summary of everything the sweep found (and didn't).
+      if (answer.found_files.length || answer.lost_names.length) {
+        const rows = document.getElementById("summary-rows");
+        for (const file of answer.found_files) {
+          const row = rows.insertRow();
+          if (file.target) row.className = "target";
+          for (const text of [file.old, "\u2192", file.new, file.how]) row.insertCell().textContent = text;
+        }
+        document.getElementById("summary-label").textContent =
+          `>> RECOVERY MANIFEST: ${answer.found_files.length} FOUND` +
+          (answer.lost_names.length ? ` // ${answer.lost_names.length} STILL MISSING` : "");
+        if (!answer.found_files.length) document.querySelector(".recover-list").hidden = true;
+        if (answer.lost_names.length) {
+          const list = document.getElementById("lost-rows");
+          for (const name of answer.lost_names) list.appendChild(document.createElement("li")).textContent = name;
+          document.getElementById("lost-list").hidden = false;
+        }
+        document.getElementById("summary").hidden = false;
+      }
+
+      if (answer.recoverable) {
+        const others = answer.recoverable - (answer.found ? 1 : 0);
+        const what = answer.found
+          ? (others ? `THIS FILE AND ${others} OTHER(S) WERE FOUND IN NEW LOCATIONS.` : "THIS FILE WAS FOUND IN A NEW LOCATION.")
+          : `${others} OTHER MISSING FILE(S) WERE FOUND IN NEW LOCATIONS.`;
+        ordersText.textContent = `>> ${what} RECOVER THEM? THIS UPDATES WHERE THE RESULTS LOOK FOR THEM. NO FILES ARE MOVED.`;
+        const recover = document.getElementById("recover");
+        recover.textContent = `> RECOVER ${answer.recoverable} FILE(S)`;
+        document.getElementById("order-buttons").hidden = false;
+
+        recover.addEventListener("click", async () => {
+          recover.disabled = document.getElementById("leave").disabled = true;
+          const reply = await fetch(BASE + "/recover", { method: "POST" });
+          const result = await reply.json();
+          document.getElementById("order-buttons").hidden = true;
+          ordersText.textContent = reply.ok
+            ? `>> ${result.updated} FILE LOCATION(S) UPDATED. RESULTS DATABASE PATCHED. HACKER'S TRACKS COVERED... BY US.`
+            : `>> RECOVERY ABORTED: ${String(result.error).toUpperCase()}`;
+        });
+        document.getElementById("leave").addEventListener("click", () => {
+          document.getElementById("order-buttons").hidden = true;
+          ordersText.textContent = ">> ORDERS RECEIVED. LOCATIONS LEFT AS THEY WERE. THE RESULTS STILL POINT AT THE OLD PLACES.";
+        });
+      }
+    })();
+  </script>
+{% endblock %}

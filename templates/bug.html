@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+
+{% block subtitle %}<p>BUG REPORT :: #{{ error_id }} <span class="cursor"></span></p>{% endblock %}
+
+{% block main %}
+  <h2 class="fixed">Report a bug</h2>
+  <div class="panel">
+    <p>&gt;&gt; NOTHING HAS BEEN SENT. A REPORT ONLY LEAVES THIS COMPUTER IF YOU OPEN THE GITHUB ISSUE
+       AND CLICK SUBMIT THERE (OR COPY IT AND SEND IT YOURSELF).</p>
+    <table class="stats">
+      <tr><td>WHAT IS SENT</td><td>The preview below, exactly: what went wrong, where in the app, the last lines of
+        what it was doing, which features are set up (yes/no only), and the app, Python and Windows versions.
+        <span class="warn">File and folder names in it are included as they are. That can reveal your NAS's
+        name (as in \\MYNAS\...), movie and show titles, Plex library names and photo folder names.</span> You can edit the text on
+        GitHub before submitting.</td></tr>
+      <tr><td>WHAT IS NEVER SENT</td><td>API keys and tokens · your network addresses (shown as &lt;IP-1&gt;, &lt;IP-2&gt;...)
+        · your Windows username (shown as &lt;user&gt;) · server addresses and settings values · your photos and videos.</td></tr>
+      <tr><td>WHO CAN SEE IT</td><td>Anyone who can see the GitHub repository{% if repo %} {{ repo }}{% endif %}.
+        If the repository is public, everyone can.</td></tr>
+    </table>
+    <div class="row">
+      {% if issue_url %}
+        <a href="{{ issue_url }}" target="_blank" rel="noopener"><button>&#9654; OPEN GITHUB ISSUE ({{ repo }})</button></a>
+      {% endif %}
+      <button class="secondary" id="copy-report">COPY REPORT</button>
+      <span id="copy-result" class="meta"></span>
+    </div>
+    {% if not issue_url %}
+      <p class="warn">NO GITHUB REPOSITORY SET FOR BUG REPORTS. ADD ONE IN SETUP &gt; OPTIONS, OR COPY THE REPORT AND SEND IT ANOTHER WAY.</p>
+    {% endif %}
+    <p class="meta filename">// FULL LOG ON THIS COMPUTER: {{ log_file }}</p>
+    <div class="row" id="status-row">
+      <span id="bug-status">
+        {% if dismissed %}&gt;&gt; STATUS: DISMISSED. IT WON'T BE MENTIONED AGAIN.
+        {% else %}&gt;&gt; STATUS: OPEN. THE APP KEEPS REMINDING YOU UNTIL YOU DISMISS IT.{% endif %}
+      </span>
+      <button class="secondary" id="dismiss" {% if dismissed %}hidden{% endif %}>DISMISS THIS ERROR</button>
+      <button class="secondary" id="restore" {% if not dismissed %}hidden{% endif %}>KEEP REMINDING ME</button>
+      {% if next_error %}<a href="/bug/{{ next_error }}">&gt; NEXT ERROR ({{ others }} MORE OPEN)</a>{% endif %}
+    </div>
+  </div>
+
+  <h2 class="fixed">Preview</h2>
+  <div class="panel">
+    <p><strong>{{ title }}</strong></p>
+    <pre class="report" id="report-text">{{ body }}</pre>
+  </div>
+
+  <script>
+    async function setDismissed(dismissed) {
+      await fetch(`/bug/{{ error_id }}/${dismissed ? "dismiss" : "restore"}`, { method: "POST" });
+      document.getElementById("dismiss").hidden = dismissed;
+      document.getElementById("restore").hidden = !dismissed;
+      document.getElementById("bug-status").textContent = dismissed
+        ? ">> STATUS: DISMISSED. IT WON'T BE MENTIONED AGAIN."
+        : ">> STATUS: OPEN. THE APP KEEPS REMINDING YOU UNTIL YOU DISMISS IT.";
+    }
+    document.getElementById("dismiss").addEventListener("click", () => setDismissed(true));
+    document.getElementById("restore").addEventListener("click", () => setDismissed(false));
+
+    document.getElementById("copy-report").addEventListener("click", async () => {
+      const text = {{ (title ~ "\n\n" ~ body) | tojson }};
+      const result = document.getElementById("copy-result");
+      try {
+        await navigator.clipboard.writeText(text);
+        result.textContent = ">> COPIED. PASTE IT INTO THE GITHUB ISSUE (OR AN EMAIL).";
+      } catch (e) {
+        // Clipboard not allowed: select the text so Ctrl+C works.
+        const range = document.createRange();
+        range.selectNodeContents(document.getElementById("report-text"));
+        getSelection().removeAllRanges(); getSelection().addRange(range);
+        result.textContent = ">> TEXT SELECTED. PRESS CTRL+C TO COPY.";
+      }
+    });
+  </script>
+{% endblock %}

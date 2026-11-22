@@ -1,0 +1,290 @@
+{% extends "layout.html" %}
+
+{% block main %}
+  <!-- Boot sequence: plays once per browser session. Click or press any key to skip. -->
+  <pre id="boot" hidden></pre>
+
+  <h2 class="fixed">Select target</h2>
+  <div class="panel">
+    <div class="row">
+      <span class="label">FOLDER:</span>
+      <input type="text" id="folder" spellcheck="false" placeholder="C:\path\to\photos  or  \\server\share\folder"
+             value="{{ summary.folder if summary else '' }}">
+      <button id="browse">BROWSE...</button>
+    </div>
+
+    <div class="row">
+      <span class="label">SHORTCUTS:</span>
+      {% for shortcut in shortcuts %}
+        <span class="shortcut">
+          <button class="secondary use-shortcut" data-path="{{ shortcut.path }}" title="{{ shortcut.path }}">{{ shortcut.name }}</button>
+          <button class="secondary delete-shortcut" data-index="{{ loop.index0 }}" title="Remove shortcut">x</button>
+        </span>
+      {% endfor %}
+      {% for folder in plex_photos %}
+        <span class="shortcut">
+          <button class="secondary use-shortcut" data-path="{{ folder }}" title="{{ folder }}">PLEX PHOTOS{% if plex_photos | length > 1 %} {{ loop.index }}{% endif %}</button>
+        </span>
+      {% endfor %}
+      <button class="secondary" id="save-shortcut">[+] SAVE CURRENT</button>
+    </div>
+
+    <div class="row">
+      <span class="label"></span>
+      <button class="big" id="run-scan">&#9654; RUN SCAN</button>
+      <span id="message" class="error"></span>
+    </div>
+  </div>
+
+  <div id="terminal-panel" hidden>
+    <h2 class="fixed">Scan in progress</h2>
+    <pre class="terminal" id="terminal"></pre>
+    <p id="bug-link" hidden></p>
+  </div>
+
+  {% if summary %}
+    <h2 class="fixed">Summary <small>{{ summary.folder }} :: scanned {{ summary.scanned_at }}</small></h2>
+    <div class="panel">
+      <table class="stats">
+        <tr><td>FILES</td><td>{{ summary.counts.photos }} photos / {{ summary.counts.videos }} videos</td></tr>
+        {% for kind, title in sections.items() %}
+          <tr><td>{{ title | upper }}</td><td>{{ summary.groups[kind] }} groups</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% include "_photo_results.html" %}
+    {% if empty_folders %}
+    <h2>Empty folders <small>{{ empty_folders | length }}*</small></h2>
+    <div class="panel">
+      <p class="meta">// FOLDERS UNDER THIS SCAN WITH NO PHOTOS OR VIDEOS INSIDE. COMPLETELY EMPTY ONES ARE TICKED FOR YOU;
+        THOSE THAT STILL HOLD OTHER FILES ARE SHOWN AND LEFT UNTICKED. DELETING IS PERMANENT (NO UNDO).
+        <br>// * COUNT AT TIME OF LAST SCAN.</p>
+      <div class="row">
+        <button class="secondary" id="empties-all">SELECT ALL</button>
+        <button class="secondary" id="empties-none">SELECT NONE</button>
+        <span class="meta" id="empties-count"></span>
+        <button id="empties-delete">DELETE SELECTED PERMANENTLY</button>
+        <span id="empties-result"></span>
+      </div>
+      <table class="movie-files" id="empties-table"></table>
+    </div>
+    {% endif %}
+  {% else %}
+    <p class="meta">NO PHOTO SCAN YET. SELECT A FOLDER AND RUN A SCAN.</p>
+  {% endif %}
+
+  <script>
+    const folderInput = document.getElementById("folder");
+    const message = document.getElementById("message");
+
+    async function post(url, data) {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data || {}),
+      });
+      return { ok: response.ok, data: await response.json() };
+    }
+
+    // ---- Folder selection ----
+    document.getElementById("browse").addEventListener("click", async () => {
+      message.textContent = "WAITING FOR FOLDER PICKER... (it may open behind this window)";
+      const { ok, data } = await post("/browse");
+      message.textContent = ok ? "" : "ERROR: " + data.error;
+      if (ok && data.path) folderInput.value = data.path;
+    });
+
+    document.querySelectorAll(".use-shortcut").forEach(button =>
+      button.addEventListener("click", () => { folderInput.value = button.dataset.path; }));
+
+    document.querySelectorAll(".delete-shortcut").forEach(button =>
+      button.addEventListener("click", async () => {
+        await post(`/shortcuts/${button.dataset.index}/delete`);
+        location.reload();
+      }));
+
+
+    document.getElementById("save-shortcut").addEventListener("click", async () => {
+      const { ok, data } = await post("/shortcuts", { path: folderInput.value });
+      if (ok) location.reload(); else message.textContent = "ERROR: " + data.error;
+    });
+
+    // ---- Scanning ----
+    const terminal = document.getElementById("terminal");
+    let linesShown = 0;
+
+    // One place that owns whether the scan controls are usable, so no scan
+    // button is ever clickable while a scan is running.
+    function setScanRunning(running) {
+      document.getElementById("run-scan").disabled = running;
+    }
+
+    function print(line, cssClass) {
+      const span = document.createElement("span");
+      span.textContent = line + "\n";
+      if (cssClass) span.className = cssClass;
+      terminal.appendChild(span);
+      terminal.scrollTop = terminal.scrollHeight;  // keep the newest line in view
+    }
+
+    let pollFails = 0;
+    async function pollScan() {
+      let status;
+      try {
+        const response = await fetch(`/scan/status?since=${linesShown}`);
+        status = await response.json();
+        pollFails = 0;  // a good reply clears the failure count
+      } catch (e) {
+        // A hiccup while the scan is running: retry twice before giving up.
+        if (++pollFails <= 2) { setTimeout(pollScan, 1000); return; }
+        theater.finish(false, "LOST CONNECTION TO THE SCAN \u2014 RELOAD TO RECONNECT");
+        setScanRunning(false);
+        return;
+      }
+      status.lines.forEach(line => theater.feed(line));
+      linesShown += status.lines.length;
+
+      if (status.running) {
+        setTimeout(pollScan, 500);
+      } else if (status.error) {
+        theater.finish(false, status.error_id ? `ERROR LOGGED AS #${status.error_id}` : "*** SCAN FAILED ***");
+        if (status.error_id) {
+          const link = document.getElementById("bug-link");
+          link.innerHTML = `&gt;&gt; <a href="/bug/${status.error_id}">REPORT THIS BUG</a>`;
+          link.hidden = false;
+        }
+        setScanRunning(false);
+      } else {
+        theater.finish(true, "LOADING RESULTS...");
+        setTimeout(() => { location.hash = "results"; location.reload(); }, 1500);
+      }
+    }
+
+    document.getElementById("run-scan").addEventListener("click", async () => {
+      message.textContent = "";
+      const { ok, data } = await post("/scan", { folder: folderInput.value });
+      if (!ok) { message.textContent = "ERROR: " + data.error; return; }
+
+      setScanRunning(true);
+      document.getElementById("terminal-panel").hidden = false;
+      document.getElementById("bug-link").hidden = true;
+      // (the theatre takes over the terminal from here)
+      linesShown = 0;
+      theater.start(terminal, "C:\\> HACKON.EXE /SCAN \"" + folderInput.value + "\"");
+      pollScan();
+    });
+
+    // ---- Empty folders (auto-populated section) ----
+    const emptiesTable = document.getElementById("empties-table");
+    if (emptiesTable) {
+      const fmtSize = b => { for (const u of ["B","KB","MB","GB"]) { if (b < 1000) return u === "B" ? b + " B" : b.toFixed(1) + " " + u; b /= 1000; } return b.toFixed(2) + " TB"; };
+      const countEmpties = () => {
+        const ticked = emptiesTable.querySelectorAll("input:checked").length;
+        const total = emptiesTable.querySelectorAll("input").length;
+        document.getElementById("empties-count").textContent = ticked + " OF " + total + " SELECTED";
+        document.getElementById("empties-delete").disabled = ticked === 0;
+      };
+      (async () => {
+        emptiesTable.innerHTML = "<tr><td>CHECKING FOLDERS...</td></tr>";
+        const data = await (await fetch("/photos/empty-folders")).json();
+        emptiesTable.innerHTML = "<tr><th></th><th>FOLDER</th><th>STILL INSIDE</th></tr>";
+        data.folders.forEach(folder => {
+          const row = document.createElement("tr");
+          row.innerHTML = "<td><input type='checkbox'></td><td class='filename'></td><td class='meta'></td>";
+          const box = row.querySelector("input");
+          box.checked = folder.files === 0;
+          box.dataset.path = folder.path;
+          box.addEventListener("change", countEmpties);
+          row.children[1].textContent = folder.path;
+          if (folder.files) {
+            const more = folder.files - folder.names.length;
+            row.children[2].textContent = folder.files + " file(s), " + fmtSize(folder.size) + ":\n" + folder.names.map(n => "  " + n).join("\n") + (more > 0 ? "\n  ...and " + more + " more" : "");
+            row.children[2].style.whiteSpace = "pre-wrap";
+          } else { row.children[2].textContent = "nothing (completely empty)"; }
+          emptiesTable.appendChild(row);
+        });
+        if (!data.folders.length) emptiesTable.innerHTML = "<tr><td>NO EMPTY FOLDERS LEFT.</td></tr>";
+        countEmpties();
+      })();
+      const setAllEmpties = c => { emptiesTable.querySelectorAll("input").forEach(b => b.checked = c); countEmpties(); };
+      document.getElementById("empties-all").addEventListener("click", () => setAllEmpties(true));
+      document.getElementById("empties-none").addEventListener("click", () => setAllEmpties(false));
+      document.getElementById("empties-delete").addEventListener("click", async () => {
+        const paths = [...emptiesTable.querySelectorAll("input:checked")].map(b => b.dataset.path);
+        if (!paths.length) return;
+        if (!confirm("Permanently delete " + paths.length + " folder(s) and everything in them?\n\nThis cannot be undone.")) return;
+        const result = document.getElementById("empties-result");
+        result.textContent = "DELETING...";
+        const data = await (await fetch("/photos/empty-folders/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths }) })).json();
+        result.textContent = ">> DELETED " + data.deleted + " FOLDER(S)" + (data.skipped.length ? " // SKIPPED " + data.skipped.length : "");
+        setTimeout(() => location.reload(), data.skipped.length ? 4000 : 1500);
+      });
+    }
+
+    // ---- Boot sequence ----
+    const BOOT_LINES = [
+      "HACKON PHOTO & VIDEO DEDUPE BIOS v1.0  (C) 1986 HACKON SYSTEMS",
+      "",
+      "MEMORY TEST ......... 640K OK",
+      "DETECTING DRIVES .... C: OK",
+      "NETWORK ............. ONLINE",
+      "LOADING FINGERPRINT ENGINE ... OK",
+      "LOADING HASH TABLES .......... OK",
+      "",
+      "C:\\> HACKON.EXE",
+      "READY.",
+    ];
+
+    function runBoot() {
+      const boot = document.getElementById("boot");
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (sessionStorage.getItem("booted") || reduceMotion) return;
+      sessionStorage.setItem("booted", "yes");
+
+      boot.hidden = false;
+      boot.innerHTML = '<span class="hint">CLICK OR PRESS ANY KEY TO SKIP</span>';
+      const text = document.createElement("span");
+      boot.prepend(text);
+
+      let line = 0, char = 0, timer;
+      const finish = () => {
+        clearTimeout(timer);
+        boot.hidden = true;
+        document.removeEventListener("keydown", finish);
+      };
+      boot.addEventListener("click", finish);
+      document.addEventListener("keydown", finish);
+
+      (function type() {
+        if (line >= BOOT_LINES.length) { timer = setTimeout(finish, 700); return; }
+        const current = BOOT_LINES[line];
+        if (char < current.length) {
+          text.textContent += current[char++];
+          timer = setTimeout(type, current.includes("....") ? 8 : 22);
+        } else {
+          text.textContent += "\n";
+          line++; char = 0;
+          timer = setTimeout(type, current === "" ? 120 : 260);
+        }
+      })();
+    }
+    // Re-attach to a scan already in progress (e.g. you switched tabs and came
+    // back). The scan keeps running on the server; this reopens the live
+    // terminal and resumes polling instead of leaving it orphaned.
+    window.addEventListener("load", async () => {
+      try {
+        const response = await fetch("/scan/status?since=0");
+        const status = await response.json();
+        if (!status.running) return;
+        setScanRunning(true);
+        document.getElementById("terminal-panel").hidden = false;
+        document.getElementById("bug-link").hidden = true;
+        linesShown = 0;
+        theater.start(terminal, "C:\\> HACKON.EXE /SCAN  [RECONNECTED TO SCAN IN PROGRESS]");
+        pollScan();
+      } catch (e) { /* nothing running to resume */ }
+    });
+
+    runBoot();
+  </script>
+{% endblock %}

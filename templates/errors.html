@@ -1,0 +1,52 @@
+{% extends "layout.html" %}
+
+{% block subtitle %}<p>ERROR LOG :: {{ errors | length }} ON FILE <span class="cursor"></span></p>{% endblock %}
+
+{% block main %}
+  <style>
+    table.errors { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.errors th { text-align: left; color: var(--dim); font-weight: normal; border-bottom: 1px solid var(--dim); padding: 4px 8px; }
+    table.errors td { padding: 6px 8px; border-bottom: 1px dashed var(--dark); vertical-align: top; }
+    table.errors td.problem { word-break: break-word; }
+    table.errors tr.dismissed td { opacity: .5; }
+    table.errors .status { white-space: nowrap; }
+  </style>
+
+  <h2 class="fixed">Errors</h2>
+  <div class="panel">
+    <p>&gt;&gt; EVERY ERROR LOGGED ON THIS COMPUTER. NOTHING IS SENT UNLESS YOU OPEN ONE AND REPORT IT YOURSELF.
+       OPEN ERRORS KEEP SHOWING IN THE BANNER UNTIL YOU DISMISS THEM.</p>
+    {% if errors %}
+      <table class="errors">
+        <thead><tr><th>WHEN</th><th>WHERE</th><th>PROBLEM</th><th>TIMES</th><th>STATUS</th><th></th></tr></thead>
+        <tbody>
+          {% for error in errors %}
+            <tr class="{{ '' if error.open else 'dismissed' }}" data-id="{{ error.id }}">
+              <td class="status">{{ error.when }}</td>
+              <td>{{ error.where }}</td>
+              <td class="problem">{{ error.problem[:160] }}</td>
+              <td>{{ error.times }}</td>
+              <td class="status" data-role="status">{{ "OPEN" if error.open else "DISMISSED" }}</td>
+              <td class="status">
+                <a href="/bug/{{ error.id }}">&gt; VIEW / REPORT</a><br>
+                <a href="#" data-role="toggle">{{ "> DISMISS" if error.open else "> REOPEN" }}</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p>&gt;&gt; NO ERRORS ON FILE. ALL SYSTEMS NOMINAL.</p>
+    {% endif %}
+  </div>
+
+  <script>
+    document.querySelectorAll("[data-role=toggle]").forEach(link => link.addEventListener("click", async event => {
+      event.preventDefault();
+      const row = link.closest("tr");
+      const open = !row.classList.contains("dismissed");
+      await fetch(`/bug/${row.dataset.id}/${open ? "dismiss" : "restore"}`, { method: "POST" });
+      location.reload();  // refreshes the banner and the tab count too
+    }));
+  </script>
+{% endblock %}

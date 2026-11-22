@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>HackOn — Photo & Video DeDupe</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg">
+  <style>
+    /* ---- 1980s green-phosphor terminal ---- */
+    :root {
+      --phos: #33ff66;        /* main phosphor color */
+      --rgb: 51, 255, 102;    /* same color as numbers, for see-through glows */
+      --dim: #1a9e3f;
+      --dark: #0a2e14;
+      --bg: #031a09;
+      --amber: #ffb000;
+      --glow: 0 0 4px rgba(var(--rgb), .8), 0 0 12px rgba(var(--rgb), .35);
+    }
+    body.amber {
+      --phos: #ffb000;
+      --rgb: 255, 176, 0;
+      --dim: #b37a00;
+      --dark: #3a2600;
+      --bg: #1a1000;
+      --amber: #33ff66;       /* commands flip to green in amber mode */
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #000 radial-gradient(ellipse at center, var(--bg) 0%, #000 75%) fixed;
+      color: var(--phos);
+      transition: color .15s, background .15s;
+      font-family: "Consolas", "Lucida Console", "Courier New", monospace;
+      font-size: 15px;
+      text-shadow: var(--glow);
+      letter-spacing: .5px;
+    }
+    /* CRT scanlines over the whole screen */
+    body::after {
+      content: "";
+      position: fixed; inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(to bottom,
+        rgba(0, 0, 0, 0) 0px, rgba(0, 0, 0, 0) 2px,
+        rgba(0, 0, 0, .28) 3px, rgba(0, 0, 0, 0) 4px);
+      z-index: 10;
+      animation: flicker 6s infinite;
+    }
+    @keyframes flicker { 0%, 97%, 100% { opacity: 1 } 98% { opacity: .85 } }
+    /* Glitch: screen jumps, tears and splits into red/blue for a moment */
+    @keyframes glitch {
+      0%   { transform: none; filter: none; }
+      10%  { transform: translate(-6px, 2px) skewX(8deg);  filter: hue-rotate(90deg) contrast(1.6); }
+      20%  { transform: translate(5px, -3px) skewX(-6deg); filter: invert(1); clip-path: inset(10% 0 55% 0); }
+      30%  { transform: translate(-3px, 0);                 filter: hue-rotate(-60deg) saturate(3); clip-path: inset(60% 0 5% 0); }
+      45%  { transform: translate(4px, 1px) scaleY(1.02);   filter: brightness(1.8); clip-path: none; }
+      60%  { transform: translate(-2px, -1px) skewX(3deg);  filter: invert(1) hue-rotate(180deg); }
+      80%  { transform: translate(1px, 0);                  filter: contrast(2); }
+      100% { transform: none; filter: none; }
+    }
+    body.glitching main, body.glitching header {
+      animation: glitch .45s steps(2) both;
+      text-shadow: -2px 0 rgba(255, 0, 60, .8), 2px 0 rgba(0, 200, 255, .8);
+    }
+    /* Respect the Windows "reduce animations" setting */
+    @media (prefers-reduced-motion: reduce) {
+      body.glitching main, body.glitching header { animation: none; }
+    }
+    @keyframes blink { 50% { opacity: 0 } }
+    @keyframes boot { from { clip-path: inset(0 100% 0 0) } to { clip-path: inset(0 0 0 0) } }
+
+    header { border-bottom: 2px solid var(--dim); padding: 18px 24px; text-align: center; }
+    header pre {
+      margin: 0; line-height: 1.05; font-size: 11px; color: var(--phos);
+      animation: boot 1.2s steps(40) both;
+    }
+    header p { margin: 10px 0 0; color: var(--dim); font-size: 13px; }
+    header p::before { content: "C:\\> "; color: var(--phos); }
+    .cursor { display: inline-block; width: .6em; height: 1em; background: var(--phos);
+              vertical-align: text-bottom; animation: blink 1s steps(1) infinite; }
+
+    main { padding: 24px; max-width: 1040px; margin: 0 auto; }
+    h2 { margin: 36px 0 14px; font-size: 18px; text-transform: uppercase; }
+    /* Section headings are switches: ">" points down when open, right when folded. */
+    main h2 { cursor: pointer; user-select: none; }
+    main h2.fixed { cursor: default; user-select: text; }
+    main h2.fixed::before { content: none; }   /* plain headings: not switches */
+    main h2::before { content: ">"; display: inline-block; margin-right: .6em; transform: rotate(90deg); transition: transform .15s; }
+    main h2.folded::before { transform: none; }
+    main h2:hover::before, main h2:focus-visible::before { text-shadow: 0 0 10px var(--phos); }
+    main h2:focus-visible { outline: 1px dashed var(--dim); outline-offset: 4px; }
+    .folded-away { display: none !important; }
+    h2 small { color: var(--dim); font-size: 13px; font-weight: normal; }
+    h2 small::before { content: "["; } h2 small::after { content: "]"; }
+
+    .group { border: 1px solid var(--dim); padding: 14px; margin-bottom: 18px;
+             background: color-mix(in srgb, var(--dark) 35%, transparent); box-shadow: inset 0 0 18px rgba(var(--rgb), .08); }
+    .group h3 { margin: 0 0 12px; font-size: 13px; color: var(--dim); text-transform: uppercase; }
+    .group h3::before { content: "// "; }
+    .files { display: flex; flex-wrap: wrap; gap: 14px; }
+    .file { width: 240px; border: 1px solid var(--dim); background: #000; }
+    .file.keep { border: 2px solid var(--phos); box-shadow: 0 0 10px rgba(var(--rgb), .5); }
+    .file img, .file video {
+      width: 100%; height: 180px; object-fit: contain; background: #000; display: block;
+      filter: contrast(1.05) saturate(.9);
+      transition: filter .2s;
+    }
+    .file a:hover img, .file a:hover video { filter: none; outline: 1px dashed var(--phos); }
+    .info { padding: 8px; font-size: 12px; word-break: break-all; border-top: 1px solid var(--dark); }
+    .badge { display: inline-block; background: var(--phos); color: #000; text-shadow: none;
+             padding: 0 6px; font-weight: bold; margin-bottom: 4px; }
+    .badge::before { content: "\25B6  "; }
+    .meta { color: var(--dim); }
+    pre.cmd { background: #000; border: 1px solid var(--dim); padding: 10px; color: var(--amber);
+              text-shadow: 0 0 6px var(--amber); }
+    a { color: var(--phos); }
+
+    /* ---- piece 6: toggles, buttons, messages ---- */
+    button {
+      font: inherit; font-size: 13px; cursor: pointer;
+      background: #000; color: var(--phos); text-shadow: var(--glow);
+      border: 1px solid var(--phos); padding: 4px 10px;
+    }
+    button:hover:not(:disabled) { background: var(--phos); color: #000; text-shadow: none; }
+    button:disabled { opacity: .35; cursor: default; }
+    button.secondary { border-color: var(--dim); color: var(--dim); }
+    .actions {
+      position: sticky; top: 0; z-index: 5;
+      display: flex; gap: 12px; flex-wrap: wrap;
+      padding: 12px 0; background: #000; border-bottom: 1px dashed var(--dim);
+    }
+    .toggle { padding: 1px 6px; margin-bottom: 4px; font-size: 12px; }
+    .file:not(.keep) .toggle { border-color: var(--amber); color: var(--amber); }
+    .best { color: var(--phos); font-weight: bold; margin-left: 6px; }
+    .file.moved { opacity: .35; border-style: dashed; }
+    .tag { display: inline-block; border: 1px dashed var(--dim); padding: 0 6px; margin-bottom: 4px; }
+    .flash { border: 1px solid var(--phos); padding: 8px 12px; }
+    .flash.file-notice { border-color: var(--amber); color: var(--amber); text-shadow: 0 0 6px var(--amber); }
+    .warn { color: var(--amber); margin: -4px 0 10px; font-size: 13px; }
+    pre.report { white-space: pre-wrap; word-break: break-all; font-size: 12px; max-height: 480px; overflow: auto;
+                 background: #000; border: 1px solid var(--dim); padding: 10px; margin: 0; }
+    #bug-link a { color: var(--amber); }
+    .error-banner { border: 1px solid var(--amber); color: var(--amber); padding: 8px 12px; margin-bottom: 14px;
+                    text-shadow: 0 0 6px var(--amber); display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+    .error-banner a { color: var(--amber); }
+    #error-toast { position: fixed; right: 18px; bottom: 18px; z-index: 30; max-width: 420px;
+                   background: #000; border: 1px solid var(--amber); color: var(--amber); padding: 12px 14px;
+                   box-shadow: 0 0 14px rgba(255, 176, 0, .4); text-shadow: 0 0 6px var(--amber); font-size: 13px; }
+    #error-toast a { color: var(--amber); }
+
+    /* ---- piece 7: menu, start page, scan terminal, boot screen ---- */
+    .logo { display: block; width: 100%; max-width: 360px; height: auto; margin: 0 auto 4px; }
+    nav { margin-top: 12px; display: flex; gap: 22px; flex-wrap: wrap; justify-content: center; font-size: 14px; }
+    nav a { text-decoration: none; padding: 2px 6px; }
+    nav a:hover, nav a.active { background: var(--phos); color: #000; text-shadow: none; }
+    nav .soon { color: var(--dim); opacity: .6; padding: 2px 6px; }
+    .panel { border: 1px solid var(--dim); padding: 16px; margin-bottom: 18px;
+             background: color-mix(in srgb, var(--dark) 35%, transparent); }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+    .label { color: var(--dim); min-width: 110px; }
+    .server-path { color: var(--phos); min-width: 180px; word-break: break-all; }
+    input[type=text], input[type=password] {
+      flex: 1; min-width: 300px; font: inherit; color: var(--phos); text-shadow: var(--glow);
+      background: #000; border: 1px solid var(--dim); padding: 6px 8px; caret-color: var(--phos);
+    }
+    input[type=text]:focus, input[type=password]:focus { outline: none; border-color: var(--phos); box-shadow: 0 0 8px rgba(var(--rgb), .4); }
+    /* Phosphor-themed radios and checkboxes (native ones look broken on the CRT theme). */
+    input[type=radio], input[type=checkbox] {
+      appearance: none; -webkit-appearance: none; flex: none;
+      width: 15px; height: 15px; margin: 0 6px 0 0; vertical-align: -2px;
+      background: #000; border: 1px solid var(--dim); cursor: pointer;
+      position: relative; display: inline-block;
+    }
+    input[type=radio] { border-radius: 50%; }
+    input[type=radio]:checked, input[type=checkbox]:checked { border-color: var(--phos); }
+    input[type=radio]:checked::after {
+      content: ''; position: absolute; inset: 3px; border-radius: 50%;
+      background: var(--phos); box-shadow: 0 0 6px var(--phos);
+    }
+    input[type=checkbox]:checked::after {
+      content: '\2713'; position: absolute; inset: 0; line-height: 13px;
+      text-align: center; color: var(--phos); text-shadow: 0 0 6px var(--phos);
+    }
+    input[type=radio]:focus, input[type=checkbox]:focus {
+      outline: none; border-color: var(--phos); box-shadow: 0 0 8px rgba(var(--rgb), .4);
+    }
+    /* A radio/checkbox option whose label text may wrap: keep the control top-aligned. */
+    label.opt { display: flex; align-items: flex-start; gap: 6px; cursor: pointer; }
+    label.opt input[type=radio], label.opt input[type=checkbox] { margin: 1px 0 0; }
+    /* Help/Install guide tabs */
+    .guide-tabs { display: flex; gap: 6px; margin: 0 0 16px; border-bottom: 1px solid var(--dim); }
+    .gtab { background: none; border: 1px solid var(--dim); border-bottom: none; color: var(--dim);
+      padding: 8px 20px; font: inherit; letter-spacing: 1px; cursor: pointer; }
+    .gtab.active { color: var(--phos); border-color: var(--phos); text-shadow: var(--glow);
+      background: rgba(var(--rgb), .06); }
+    .gtab:hover { color: var(--phos); }
+    /* Grouped sub-sections inside a panel (e.g. Settings > Options) */
+    .subsection + .subsection { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--dim); }
+    .subhead { color: var(--amber); letter-spacing: 2px; margin: 0 0 10px; text-shadow: 0 0 6px rgba(255,176,0,.4); }
+    .indent { padding-left: 16px; border-left: 2px solid var(--dim); }
+    .indent .row { margin: 7px 0; }
+    .shortcut { display: inline-flex; }
+    .shortcut button + button { border-left: none; padding: 4px 7px; }
+    button.big { font-size: 16px; padding: 8px 20px; letter-spacing: 2px; }
+    .error { color: #ff3b3b; text-shadow: 0 0 6px rgba(255, 59, 59, .7); }
+    .terminal {
+      height: 380px; overflow-y: auto; background: #000; border: 1px solid var(--phos);
+      scrollbar-color: var(--phos) #000; scrollbar-width: thin;
+      padding: 10px; font-size: 13px; white-space: pre-wrap; margin: 0;
+      box-shadow: inset 0 0 20px rgba(var(--rgb), .12);
+    }
+    .stats td { padding: 2px 18px 2px 0; }
+    .action-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .help { text-align: left; line-height: 1.5; }
+    .help h3 { color: var(--phos); margin: 18px 0 6px; }
+    .help h4, .help h5 { color: var(--phos); opacity: .9; margin: 12px 0 4px; font-size: 14px; }
+    .help p, .help li { font-size: 14px; }
+    .help code { background: #0c1a10; padding: 0 4px; }
+    .help-code { background: #000; border: 1px solid var(--dim); padding: 8px 10px; white-space: pre-wrap; font-size: 13px; overflow-x: auto; }
+    .help-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+    .help-table th { text-align: left; color: var(--dim); border-bottom: 1px solid var(--dim); padding: 4px 8px; }
+    .help-table td { border-bottom: 1px dashed var(--dark); padding: 4px 8px; vertical-align: top; }
+    .help a { color: var(--phos); }
+    .toc { columns: 2; font-size: 14px; }
+    .phos { color: var(--phos); text-shadow: 0 0 6px var(--dim); }
+    .found-group { margin: 10px 0; padding-top: 6px; border-top: 1px dashed var(--dark); }
+    .found-group > .label { margin: 0 0 4px; }
+    .action-bar .warn { width: 100%; margin: 0; }
+    .movie-files .toggle { background: none; border: 1px solid var(--phos); color: var(--phos); padding: 2px 8px; cursor: pointer; font: inherit; white-space: nowrap; }
+    .movie-files .toggle:hover { background: var(--phos); color: #000; text-shadow: none; }
+    .movie-files tr.moved { opacity: .5; }
+    .stats td:first-child { color: var(--dim); }
+    table.movie-files { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.movie-files th { text-align: left; color: var(--dim); font-weight: normal; border-bottom: 1px solid var(--dim); padding: 4px 8px; }
+    table.movie-files td { padding: 6px 8px; border-bottom: 1px dashed var(--dark); vertical-align: top; }
+    table.movie-files tr.tracked td { background: color-mix(in srgb, var(--dark) 60%, transparent); }
+    .filename { word-break: break-all; }
+    .folder { margin: 8px 0 0; font-size: 12px; word-break: break-all; }
+    #boot {
+      position: fixed; inset: 0; z-index: 20; background: #000; padding: 40px;
+      white-space: pre-wrap; font-size: 15px; cursor: pointer; margin: 0;
+    }
+    #boot .hint { position: fixed; bottom: 20px; right: 30px; color: var(--dim); font-size: 12px; }
+    ::selection { background: var(--phos); color: #000; }
+
+    /* ---- PLAY button + player frame ---- */
+    .playcell { white-space: nowrap; width: 1%; }
+    .play-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 22px; padding: 0; background: none;
+      border: 1px solid var(--phos); color: var(--phos); cursor: pointer;
+      line-height: 0; vertical-align: middle;
+    }
+    .play-btn:hover:not(:disabled) { background: var(--phos); color: #000; text-shadow: none; }
+    .play-btn .icon-play { fill: currentColor; }
+    .play-btn .icon-slash { fill: none; stroke: currentColor; stroke-width: 1.6; }
+    .play-btn.unplayable {
+      border-color: var(--dim); color: var(--dim); cursor: default; opacity: .7;
+    }
+    .play-btn.unplayable:hover { background: none; color: var(--dim); }
+
+    .play-modal {
+      position: fixed; inset: 0; z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, .86);
+    }
+    .play-modal[hidden] { display: none; }
+    .play-frame {
+      width: 75%; max-width: 75vw;
+      background: var(--bg); border: 2px solid var(--phos); padding: 10px 12px 12px;
+      box-shadow: 0 0 6px rgba(var(--rgb), .7), 0 0 26px rgba(var(--rgb), .35);
+    }
+    .play-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .play-title { color: var(--phos); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .play-close { flex: none; }
+    .play-video { width: 100%; max-height: 74vh; display: block; background: #000; border: 1px solid var(--dim); }
+    .play-video[hidden] { display: none; }
+    .play-status { margin: 10px 0 0; min-height: 1.2em; color: var(--amber); font-size: 13px; }
+
+  </style>
+</head>
+<body>
+  <header>
+<img src="/assets/logo-hackon-static.svg" alt="HackOn — Photo & Video DeDupe" class="logo">
+    <nav>
+      <a href="/" class="{{ 'active' if request.endpoint == 'start' }}">PHOTO SCAN</a>
+      <a href="/movies" class="{{ 'active' if request.endpoint == 'movies_page' }}">MOVIES</a>
+      <a href="/tv" class="{{ 'active' if request.endpoint == 'tv_page' }}">TV</a>
+      <a href="/setup" class="{{ 'active' if request.endpoint == 'setup' }}">SETUP</a>
+      <a href="/help" class="{{ 'active' if request.endpoint == 'help_page' }}">HELP</a>
+      {% if has_errors %}
+        <a href="/errors" class="{{ 'active' if request.endpoint in ('errors_page', 'bug_page') }}">ERRORS{% if unreviewed_errors %} ({{ unreviewed_errors | length }}){% endif %}</a>
+      {% endif %}
+    </nav>
+    {% block subtitle %}<p>READY <span class="cursor"></span></p>{% endblock %}
+  </header>
+  <main>
+    {% if unreviewed_errors and request.endpoint != "bug_page" %}
+      <div class="error-banner">
+        <span>&gt;&gt; {{ unreviewed_errors | length }} NEW ERROR{{ "S" if unreviewed_errors | length != 1 }} LOGGED ON THIS COMPUTER. NOTHING HAS BEEN SENT.</span>
+        <a href="/bug/{{ unreviewed_errors[0] }}">REVIEW &amp; REPORT</a>
+        <button class="secondary" onclick="fetch('/bugs/dismiss-all', {method: 'POST'}).then(() => this.parentElement.remove())">DISMISS ALL</button>
+      </div>
+    {% endif %}
+    {% if backdoor_open %}{# backdoor #}
+      <p class="flash warn">&gt;&gt; PLEX BACKDOOR OPEN (LAST PROBE): ANY DEVICE ON YOUR NETWORK CAN CONTROL PLEX WITHOUT A PASSWORD.
+        CLOSE IT IN PLEX WHEN YOU NO LONGER NEED IT, THEN PROBE AGAIN IN <a href="/setup#plex">SETUP</a>.</p>
+    {% endif %}
+    {% for notice in file_notices %}
+      <p class="flash file-notice">&gt;&gt; DATA FILE RESET :: {{ notice }}</p>
+    {% endfor %}
+    {% block main %}{% endblock %}
+  </main>
+
+  <script>
+    // Result section headings fold and unfold everything under them, up to the
+    // next heading. Plain headings (class "fixed") don't. Folded sections are
+    // remembered per page in this browser.
+    (function () {
+      const memory = {
+        get(key) { try { return localStorage.getItem(key); } catch (e) { return null; } },
+        set(key, value) { try { localStorage.setItem(key, value); } catch (e) { /* not available */ } },
+      };
+
+      function sectionOf(heading) {
+        const parts = [];
+        for (let next = heading.nextElementSibling; next && next.tagName !== "H2"; next = next.nextElementSibling) {
+          if (next.tagName !== "SCRIPT") parts.push(next);
+        }
+        return parts;
+      }
+
+      function setFolded(heading, folded) {
+        heading.classList.toggle("folded", folded);
+        heading.setAttribute("aria-expanded", String(!folded));
+        sectionOf(heading).forEach(part => part.classList.toggle("folded-away", folded));
+      }
+
+      document.querySelectorAll("main h2:not(.fixed)").forEach(heading => {
+        // Remember by page and heading name (without the counts in <small>).
+        const name = (heading.firstChild && heading.firstChild.textContent || heading.textContent).trim();
+        const key = `folded:${location.pathname}:${name}`;
+        heading.setAttribute("role", "button");
+        heading.setAttribute("tabindex", "0");
+        heading.title = "Click to show or hide this section";
+        setFolded(heading, memory.get(key) === "yes");
+
+        const toggle = () => {
+          const folded = !heading.classList.contains("folded");
+          setFolded(heading, folded);
+          memory.set(key, folded ? "yes" : "no");
+        };
+        heading.addEventListener("click", toggle);
+        heading.addEventListener("keydown", event => {
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggle(); }
+        });
+      });
+    })();
+
+    // ---- Scan theatre -------------------------------------------------------
+    // Scans report plain progress lines ("Fingerprinting 250 of 1158"). Instead
+    // of showing them, this turns each one into a 1980s "hacking" sequence:
+    // themed story lines, a progress bar driven by the real counts, a mission
+    // timer and a scrolling fake memory dump. Errors still show the real text.
+    const theater = (() => {
+      const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      let screen, timer, started, story, noise, stage, current, total, tick, outcome;
+
+      const hex = digits => Math.floor(Math.random() * 16 ** digits).toString(16).toUpperCase().padStart(digits, "0");
+      const upper = text => String(text).toUpperCase();
+      const lastPart = path => upper(String(path).split(/[\\/]/).filter(Boolean).pop() || path);
+
+      // [pattern, story line (or null), new stage name (or null), total for the stage]
+      const RULES = [
+        // Lines the app has already themed (the lost-file trace) are shown as they are.
+        [/^>> (\*\*\* INTRUSION.*)/, m => m[1], "COUNTER-INTRUSION"],
+        [/^>> (SWEEPING VOLUME.*)/, m => m[1], "VOLUME SWEEP"],
+        [/^>> (.*)/, m => m[1]],
+        [/^Scanning (.*)/, m => `ESTABLISHING UPLINK TO VOLUME "${lastPart(m[1])}"... CONNECTED`, "UPLINK"],
+        [/^Found (\d+) photos, (\d+) videos/, m => `TARGETS ACQUIRED: ${m[1]} IMAGES / ${m[2]} MOTION FILES`],
+        [/^Found (\d+) video files/, m => `TARGETS ACQUIRED: ${m[1]} MOTION FILES`],
+        [/^Checking for (exact duplicates|identical files)/, () => "RUNNING SHA-256 COLLISION SWEEP", "COLLISION SWEEP"],
+        [/^(\d+) exact duplicate groups/, m => `COLLISIONS LOGGED: ${m[1]}`],
+        [/^Fingerprinting (\d+) photos/, m => `EXTRACTING VISUAL SIGNATURES FROM ${m[1]} IMAGES`, "SIGNATURE EXTRACTION", 1],
+        [/^Comparing fingerprints/, () => "CROSS-REFERENCING SIGNATURE MATRIX", "MATRIX CROSS-REFERENCE"],
+        [/^(\d+) copy groups, (\d+) similar/, m => `CLONES IDENTIFIED: ${m[1]} // TWINS IDENTIFIED: ${m[2]}`],
+        [/^Reused (\d+)/, m => `CACHE HIT: ${m[1]} SIGNATURES RECOVERED FROM CORE MEMORY`],
+        [/^Asking (Radarr|Sonarr)/, m => `HANDSHAKE WITH ${upper(m[1])} MAINFRAME... ACCEPTED`, "MAINFRAME HANDSHAKE"],
+        [/^(Radarr|Sonarr) knows (\d+)/, m => `${upper(m[1])} MANIFEST DOWNLOADED: ${m[2]} RECORDS`, "FOLDER INFILTRATION", 2],
+        [/^(\d+) (movies|episodes) have extra/, m => `ANOMALIES DETECTED: ${m[1]}`],
+        [/^Looking for stray/, () => "SWEEPING ROOT SECTORS FOR UNREGISTERED DATA", "ROOT SECTOR SWEEP"],
+        [/^(\d+) stray folders/, m => `ROGUE DIRECTORIES FOUND: ${m[1]}`],
+        [/^(\d+) groups of possible duplicates/, m => `SUSPECT CLUSTERS FLAGGED: ${m[1]}`],
+        [/^Reading details for (\d+)/, m => `DEPLOYING FFPROBE AGENTS AGAINST ${m[1]} FILES`, "AGENT DEPLOYMENT", 1],
+        [/^Found details for (\d+) of (\d+)/, m => `INTEL RECOVERED: ${m[1]} OF ${m[2]} FILES`],
+        [/^Skipped reading video details/, () => "FFPROBE AGENTS UNAVAILABLE. INSTALL FFMPEG."],
+        [/^Couldn't read/, () => `CORRUPTED SECTOR 0x${hex(4)} SKIPPED`],
+        [/complete$/i, () => "OPERATION COMPLETE."],
+        [/^ERROR: (.*)/, m => `*** SYSTEM FAULT: ${upper(m[1])} ***`],
+      ];
+
+      function noiseLine() {
+        const roll = Math.random();
+        if (roll < 0.10) return `DECRYPTING SECTOR ${hex(4)}... OK`;
+        if (roll < 0.16) return `TRACE ${10 + Math.floor(Math.random() * 240)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)} ... BOUNCED`;
+        if (roll < 0.20) return `BUFFER 0x${hex(4)} FLUSHED`;
+        const bytes = Array.from({ length: 8 }, () => hex(2));
+        const text = bytes.map(b => { const c = parseInt(b, 16); return c > 32 && c < 127 ? String.fromCharCode(c) : "."; }).join("");
+        return `0x${hex(8)}  ${bytes.join(" ")}  |${text}|`;
+      }
+
+      function progressBar() {
+        const width = 32;
+        if (total > 0) {
+          const share = Math.min(1, current / total);
+          const filled = Math.round(share * width);
+          return `[${"\u2588".repeat(filled)}${"\u2591".repeat(width - filled)}] ${String(Math.floor(share * 100)).padStart(3)}%`;
+        }
+        const block = 6, position = tick % (width + block);  // sweeping "working" bar
+        let bar = "";
+        for (let i = 0; i < width; i++) bar += (i >= position - block && i < position) ? "\u2588" : "\u2591";
+        return `[${bar}]  ...`;
+      }
+
+      function render() {
+        tick++;
+        if (!outcome && (!calm || tick % 4 === 0)) {
+          noise.push(noiseLine());
+          if (noise.length > 7) noise.shift();
+        }
+        const seconds = Math.floor((Date.now() - started) / 1000);
+        const clock = `T+${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+        const spinner = outcome === "ok" ? "\u25A0" : outcome === "fail" ? "X" : "|/-\\"[tick % 4];
+        // Follow the newest lines, unless you've scrolled up to read.
+        const following = screen.scrollHeight - screen.scrollTop - screen.clientHeight < 40;
+        const readingAt = screen.scrollTop;
+        screen.textContent = [
+          ...story.slice(-500),
+          "",
+          `${spinner} ${progressBar()}  ${stage}`,
+          `  ${clock}${total > 0 && !outcome ? `   ${current} / ${total}` : ""}`,
+          "",
+          ...noise.map(line => "  " + line),
+        ].join("\n");
+        screen.scrollTop = following ? screen.scrollHeight : readingAt;
+      }
+
+      return {
+        start(element, command) {
+          screen = element;
+          story = [command, ""];
+          noise = [];
+          stage = "INITIALISING";
+          current = total = tick = 0;
+          outcome = null;
+          started = Date.now();
+          clearInterval(timer);
+          timer = setInterval(render, calm ? 500 : 90);
+          render();
+        },
+        feed(rawLine) {
+          const line = rawLine.replace(/^\d\d:\d\d:\d\d\s+/, "");  // drop the time stamp
+          const counted = line.match(/^(Fingerprinting|Checked|Read) (\d+) of (\d+)/);
+          if (counted) { current = Number(counted[2]); total = Number(counted[3]); return; }
+          for (const [pattern, makeLine, newStage] of RULES) {
+            const match = line.match(pattern);
+            if (!match) continue;
+            const text = makeLine && makeLine(match);
+            if (text) story.push(text);
+            if (newStage) { stage = newStage; current = total = 0; }
+            return;
+          }
+          story.push(`SUBROUTINE 0x${hex(3)} ... OK`);
+        },
+        finish(ok, finalLine) {
+          outcome = ok ? "ok" : "fail";
+          if (ok) { total = Math.max(total, 1); current = total; stage = "ACCESS GRANTED"; }
+          else stage = "CONNECTION TERMINATED";
+          if (finalLine) story.push(finalLine);
+          render();
+          clearInterval(timer);
+        },
+      };
+    })();
+
+    // ---- Catching errors -----------------------------------------------------
+    // 1. A button's request fails on the server: the answer carries an error id.
+    // 2. A script on this page breaks: it's sent to the app to be logged.
+    // Either way a notice appears with a link to review the bug report.
+    // Nothing leaves this computer unless you submit the report on GitHub.
+    function showErrorNotice(errorId, what) {
+      let toast = document.getElementById("error-toast");
+      if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "error-toast";
+        document.body.appendChild(toast);
+      }
+      toast.innerHTML = `&gt;&gt; ${what}<br>LOGGED AS #${errorId}. NOTHING HAS BEEN SENT.<br>` +
+        `<a href="/bug/${errorId}">REVIEW &amp; REPORT</a> &nbsp; <a href="#" onclick="this.parentElement.remove(); return false;">CLOSE</a>`;
+    }
+
+    (function () {
+      const realFetch = window.fetch.bind(window);
+      window.fetch = async (...args) => {
+        const response = await realFetch(...args);
+        if (response.status >= 500) {
+          response.clone().json()
+            .then(data => { if (data.error_id) showErrorNotice(data.error_id, "SOMETHING WENT WRONG."); })
+            .catch(() => {});
+        }
+        return response;
+      };
+
+      // Every different error is sent. The same error repeating on this page
+      // (say, inside a timer) is sent once, so it can't flood the app.
+      const reported = new Set();
+      // While the page is navigating away or reloading, the browser aborts any
+      // in-flight fetch, which rejects with a NetworkError. That is normal, not
+      // a bug, so stop reporting once the page is on its way out.
+      let leaving = false;
+      addEventListener("pagehide", () => { leaving = true; });
+      addEventListener("beforeunload", () => { leaving = true; });
+      function reportBrowserError(message, source, stack) {
+        if (leaving) return;
+        const key = `${message}|${source}`;
+        if (reported.has(key)) return;
+        reported.add(key);
+        realFetch("/client-error", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: String(message), source: String(source || ""), stack: String(stack || ""), page: location.pathname }),
+        })
+          .then(response => response.json())
+          .then(data => data.error_id && showErrorNotice(data.error_id, "A SCRIPT ON THIS PAGE BROKE."))
+          .catch(() => {});  // the app isn't reachable: nothing more we can do
+      }
+      window.addEventListener("error", event =>
+        reportBrowserError(event.message, `${event.filename}:${event.lineno}:${event.colno}`, event.error && event.error.stack));
+      window.addEventListener("unhandledrejection", event => {
+        const reason = event.reason || {};
+        reportBrowserError(reason.message || reason, "promise", reason.stack);
+      });
+    })();
+
+
+    // Glitch (and switch green <-> amber) after a random number of clicks.
+    const MIN_CLICKS = 4;
+    const MAX_CLICKS = 12;
+
+    function randomClickCount() {
+      return MIN_CLICKS + Math.floor(Math.random() * (MAX_CLICKS - MIN_CLICKS + 1));
+    }
+
+    let clicksLeft = randomClickCount();
+
+    function glitch() {
+      document.body.classList.add("glitching");
+      setTimeout(() => document.body.classList.toggle("amber"), 220);  // flip mid-glitch
+      setTimeout(() => document.body.classList.remove("glitching"), 450);
+    }
+
+    // True when the countdown has run out but you weren't looking at this page.
+    let glitchWaiting = false;
+
+    function pageIsInView() {
+      return !document.hidden && document.hasFocus();
+    }
+
+    function glitchWhenVisible() {
+      if (glitchWaiting && pageIsInView()) {
+        glitchWaiting = false;
+        setTimeout(glitch, 400);  // short pause so your eyes are back on the page
+      }
+    }
+
+    document.addEventListener("click", () => {
+      clicksLeft--;
+      if (clicksLeft <= 0) {
+        glitchWaiting = true;
+        clicksLeft = randomClickCount();  // start a new countdown
+        // Wait a moment: clicking a photo opens a new tab, and the browser
+        // needs a beat to switch away before we can tell this page is hidden.
+        setTimeout(glitchWhenVisible, 300);
+      }
+    });
+
+    // Coming back to this tab or window triggers any glitch that was waiting.
+    document.addEventListener("visibilitychange", glitchWhenVisible);
+    window.addEventListener("focus", glitchWhenVisible);
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

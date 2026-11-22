@@ -1,0 +1,63 @@
+{% extends "layout.html" %}
+
+{% block subtitle %}<p>HELP &amp; GUIDE <span class="cursor"></span></p>{% endblock %}
+
+{% block main %}
+  <div class="guide-tabs">
+    <button class="gtab active" data-tab="help">&#9654; HELP GUIDE</button>
+    <button class="gtab" data-tab="install">&#9654; INSTALL GUIDE</button>
+  </div>
+
+  <section id="tab-help" class="guide-panel">
+    <div class="panel help">
+      <p class="meta">// CONTENTS</p>
+      <ul class="toc">
+        {% for title, anchor in help_toc %}<li><a href="#{{ anchor }}">{{ title }}</a></li>{% endfor %}
+      </ul>
+    </div>
+    <div class="panel help">{{ help_html | safe }}</div>
+  </section>
+
+  <section id="tab-install" class="guide-panel" hidden>
+    <div class="panel help">
+      <p class="meta">// CONTENTS</p>
+      <ul class="toc">
+        {% for title, anchor in install_toc %}<li><a href="#{{ anchor }}">{{ title }}</a></li>{% endfor %}
+      </ul>
+    </div>
+    <div class="panel help">{{ install_html | safe }}</div>
+  </section>
+
+  <script>
+    (function () {
+      const tabs = [...document.querySelectorAll(".gtab")];
+      const panels = {
+        help: document.getElementById("tab-help"),
+        install: document.getElementById("tab-install"),
+      };
+      function show(name) {
+        tabs.forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+        panels.help.hidden = name !== "help";
+        panels.install.hidden = name !== "install";
+      }
+      tabs.forEach(t => t.addEventListener("click", () => {
+        show(t.dataset.tab);
+        history.replaceState(null, "", "#" + t.dataset.tab);
+      }));
+      // On load (and on #hash links from Setup): open the tab that holds the
+      // target section, then scroll to it. Hidden panels are still in the DOM,
+      // so we can tell which tab owns the id before revealing it.
+      function openForHash() {
+        const id = decodeURIComponent(location.hash.slice(1));
+        if (!id || id === "help") return show("help");
+        if (id === "install") return show("install");
+        const el = document.getElementById(id);
+        if (!el) return;
+        show(panels.install.contains(el) ? "install" : "help");
+        requestAnimationFrame(() => el.scrollIntoView({ block: "start" }));
+      }
+      openForHash();
+      window.addEventListener("hashchange", openForHash);
+    })();
+  </script>
+{% endblock %}

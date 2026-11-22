@@ -1,0 +1,83 @@
+{# Photo results: included on the PHOTO SCAN page under the scan controls. #}
+<div id="results">
+
+  {% for message in get_flashed_messages() %}
+    <p class="flash">&gt;&gt; {{ message }}</p>
+  {% endfor %}
+
+  <div class="actions">
+    <form action="/move" method="post"
+          onsubmit="return confirm('Move ' + document.getElementById('to-move').textContent + ' files to _review? You can undo this.');">
+      <button id="move-button" {{ "disabled" if not to_move }}>
+        &#9654; MOVE <span id="to-move">{{ to_move }}</span> UNTICKED FILES TO _REVIEW
+      </button>
+    </form>
+    <form action="/undo" method="post">
+      <button class="secondary" {{ "disabled" if not can_undo }}>&#9664; UNDO LAST MOVE</button>
+    </form>
+  </div>
+
+  {% for title, groups in result_sections %}
+    <h2>{{ title }} <small>{{ groups | length }} groups</small></h2>
+
+    {% for group in groups %}
+      {% set kept = group.files | selectattr("keep") | list | length %}
+      <div class="group" data-group="{{ group.id }}">
+        <h3>Group {{ "%03d" | format(group.id) }} :: {{ group.files | length }} files</h3>
+        <p class="warn" {{ "hidden" if kept }}>!! NOTHING TICKED. THIS GROUP WILL BE SKIPPED.</p>
+        <div class="files">
+          {% for file in group.files %}
+            <div class="file {{ 'keep' if file.keep }} {{ 'moved' if file.moved_to }}">
+              <a href="/file/{{ group.id }}/{{ loop.index0 }}" target="_blank">
+                {% if file.is_video %}
+                  <video src="/file/{{ group.id }}/{{ loop.index0 }}" preload="metadata" muted></video>
+                {% else %}
+                  <img src="/thumb/{{ group.id }}/{{ loop.index0 }}" loading="lazy" alt="">
+                {% endif %}
+              </a>
+              <div class="info">
+                {% if file.moved_to %}
+                  <span class="tag">MOVED &rarr; _REVIEW</span><br>
+                {% else %}
+                  <button class="toggle" data-group="{{ group.id }}" data-index="{{ loop.index0 }}">
+                    {{ "[X] KEEP" if file.keep else "[ ] MOVE" }}
+                  </button>
+                  {% if file.best %}<span class="best">&#9733; BEST</span>{% endif %}<br>
+                {% endif %}
+                {{ file.path }}<br>
+                <span class="meta">
+                  {{ "%.1f" | format(file.size / 1000000) }} MB
+                  {% if file.pixels %} · {{ "%.1f" | format(file.pixels / 1000000) }} MP{% endif %}
+                </span>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% else %}
+      <p class="meta">NO MATCHES FOUND.</p>
+    {% endfor %}
+  {% endfor %}
+
+  <script>
+    // Clicking a toggle saves the choice on the server, then updates the page.
+    document.querySelectorAll(".toggle").forEach(button => {
+      button.addEventListener("click", async () => {
+        const response = await fetch(`/toggle/${button.dataset.group}/${button.dataset.index}`,
+                                     { method: "POST" });
+        if (!response.ok) return;
+        const data = await response.json();
+
+        const card = button.closest(".file");
+        card.classList.toggle("keep", data.keep);
+        button.textContent = data.keep ? "[X] KEEP" : "[ ] MOVE";
+
+        document.getElementById("to-move").textContent = data.to_move;
+        document.getElementById("move-button").disabled = data.to_move === 0;
+
+        const group = button.closest(".group");
+        group.querySelector(".warn").hidden = group.querySelector(".file.keep") !== null;
+      });
+    });
+  </script>
+</div>

@@ -1,0 +1,34 @@
+{% extends "layout.html" %}
+
+{% block subtitle %}<p>*** SYSTEM FAULT *** <span class="cursor"></span></p>{% endblock %}
+
+{% block main %}
+  <h2 class="fixed">Something went wrong</h2>
+  <div class="panel">
+    <p class="error">X CONNECTION TERMINATED</p>
+    <p class="error">*** SYSTEM FAULT: {{ error | string | upper }} ***</p>
+    {% if error_id %}
+      <p>&gt;&gt; ERROR LOGGED AS #{{ error_id }}</p>
+      <p><a href="/bug/{{ error_id }}">&gt; REPORT THIS BUG</a></p>
+    {% endif %}
+    <p><a href="/">&gt; BACK TO PHOTO SCAN</a></p>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    // The fault page keeps glitching every 15 seconds until you do something
+    // (click, tap, press a key or scroll). It waits while the page is out of view.
+    (function () {
+      const EVERY_MS = 15000;
+      const timer = setInterval(() => { if (pageIsInView()) glitch(); }, EVERY_MS);
+      function stop() {
+        clearInterval(timer);
+        for (const name of ["pointerdown", "keydown", "wheel", "touchstart"])
+          document.removeEventListener(name, stop);
+      }
+      for (const name of ["pointerdown", "keydown", "wheel", "touchstart"])
+        document.addEventListener(name, stop);
+    })();
+  </script>
+{% endblock %}
