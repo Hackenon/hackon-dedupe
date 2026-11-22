@@ -2,9 +2,10 @@
 
 *The story behind HackOn Photo & Video DeDupe — and the person building it.*
 
-My father bought us a brand new Commodore 64 for Christmas of 1982.
-
-I keyed in several binary games from magazines like the old *Compute!'s Gazette*.
+My father bought us a brand new Commodore 64 for Christmas of 1982. I loved that
+Commodore 64 more than my own sister back then.  I remember spending hours on it 
+playing games and hand keying in programs from magazines like the old *Compute!'s 
+Gazette*.  
 
 In the seventh grade I took my Commodore to school for show and tell. I shared the
 game [Little Computer People](https://en.wikipedia.org/wiki/Little_Computer_People),
