@@ -115,4 +115,8 @@ and error logs (`logs/`) are local files, kept out of version control by `.gitig
 
 ## Licence
 
-To be decided.
+**Source-available for inspection.** © 2026 HackOn Systems. All rights reserved.
+
+You're welcome to read and review this code. It is **not** released under an
+open-source licence, so copying, redistributing, or reusing it in your own
+projects isn't permitted for now. A formal licence may follow.
