@@ -6,6 +6,7 @@ The web app reads this file instead of rescanning each time you open it.
 import sys
 from datetime import datetime
 from pathlib import Path
+import paths
 
 from cache import FingerprintCache
 from exact import find_exact_duplicates
@@ -13,7 +14,7 @@ from near import best_first, find_near_duplicates
 from safejson import read_json, write_json
 from scan import scan, find_empty_folders
 
-RESULTS_FILE = Path(__file__).parent / "results.json"
+RESULTS_FILE = paths.user_data("results.json")
 
 
 def file_info(path, folder, pixels=None, keep=False, best=False):

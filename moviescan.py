@@ -7,6 +7,7 @@ root folders that belong to no movie are listed separately as strays.
 
 from datetime import datetime
 from pathlib import Path
+import paths
 
 import arr
 from mediatools import (file_entry, find_strays, folder_key, same_path, title_key,
@@ -14,7 +15,7 @@ from mediatools import (file_entry, find_strays, folder_key, same_path, title_ke
 from netpaths import translate
 from safejson import read_json, write_json
 
-MOVIE_RESULTS_FILE = Path(__file__).parent / "movie_results.json"
+MOVIE_RESULTS_FILE = paths.user_data("movie_results.json")
 
 MOVIE_COUNTS = ("movies", "with_extra_files", "extra_files", "extra_bytes",
                 "strays", "missing_folders", "unmapped")

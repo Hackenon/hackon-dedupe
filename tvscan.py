@@ -10,6 +10,7 @@ name are grouped under "?" for their show.
 import re
 from datetime import datetime
 from pathlib import Path
+import paths
 
 import arr
 from mediatools import (file_entry, find_strays, folder_key, title_key,
@@ -17,7 +18,7 @@ from mediatools import (file_entry, find_strays, folder_key, title_key,
 from netpaths import translate
 from safejson import read_json, write_json
 
-TV_RESULTS_FILE = Path(__file__).parent / "tv_results.json"
+TV_RESULTS_FILE = paths.user_data("tv_results.json")
 
 TV_COUNTS = ("shows", "with_extra_files", "extra_files", "extra_bytes",
              "strays", "missing_folders", "unmapped")

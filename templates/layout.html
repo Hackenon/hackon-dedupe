@@ -587,5 +587,13 @@
     window.addEventListener("focus", glitchWhenVisible);
   </script>
   {% block scripts %}{% endblock %}
+  <script>
+    // Tell the server a page is still open; when every page is closed the app quits.
+    (function () {
+      function ping() { fetch("/alive", { cache: "no-store" }).catch(function () {}); }
+      ping();
+      setInterval(ping, 3000);
+    })();
+  </script>
 </body>
 </html>

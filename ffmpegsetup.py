@@ -23,9 +23,9 @@ import tempfile
 import urllib.request
 import zipfile
 from pathlib import Path
+import paths
 
-APP_FOLDER = Path(__file__).resolve().parent
-BIN_DIR = APP_FOLDER / "bin"
+BIN_DIR = paths.user_data("bin")
 EXE = "ffprobe.exe" if os.name == "nt" else "ffprobe"
 
 # LGPL builds only (no GPL-only encoders; we just read metadata).

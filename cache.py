@@ -6,10 +6,11 @@ contents, so its fingerprints are reused instead of recalculated.
 """
 
 from pathlib import Path
+import paths
 
 from safejson import read_json, write_json
 
-CACHE_FILE = Path(__file__).parent / "fingerprints.json"
+CACHE_FILE = paths.user_data("fingerprints.json")
 
 # Bump this if the fingerprint math ever changes, so old entries are ignored.
 VERSION = 1

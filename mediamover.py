@@ -9,6 +9,7 @@ folder it came from, keeping the path below that root. Each move batch is saved
 import shutil
 from datetime import datetime
 from pathlib import Path
+import paths
 
 from mover import free_path, hide_review_from_plex
 from safejson import read_json, write_json
@@ -16,8 +17,8 @@ from scan import REVIEW_FOLDER
 
 # One undo log per kind, next to the results files.
 MOVES_FILES = {
-    "movies": Path(__file__).parent / "movie_moves.json",
-    "tv": Path(__file__).parent / "tv_moves.json",
+    "movies": paths.user_data("movie_moves.json"),
+    "tv": paths.user_data("tv_moves.json"),
 }
 
 

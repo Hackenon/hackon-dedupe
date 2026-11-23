@@ -6,6 +6,8 @@ Then open: http://127.0.0.1:5000
 
 import io
 import mimetypes
+import ctypes
+import logging
 from urllib.parse import urlsplit
 import os
 import shutil
@@ -17,6 +19,7 @@ import webbrowser
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
+import paths
 
 from flask import (Flask, abort, flash, jsonify, redirect, render_template, request,
                    send_file, send_from_directory, session, url_for)
@@ -57,8 +60,8 @@ from safejson import read_json, take_notices, write_json
 from settings import (SERVICES, is_configured, load_settings, mask, plex_client_id,
                       save_settings)
 
-app = Flask(__name__)
-ASSETS_FOLDER = Path(__file__).parent / "assets"
+app = Flask(__name__, template_folder=str(paths.bundled("templates")))
+ASSETS_FOLDER = paths.bundled("assets")
 
 
 @app.route("/assets/<path:name>")
@@ -1500,10 +1503,69 @@ threading.excepthook = log_uncaught_thread_error
 DEBUG = os.environ.get("HACKON_DEBUG") == "1"
 
 
+# --- console theme + quit when the browser closes (desktop-app behaviour) -----
+# Each open page pings /alive every few seconds. If no page has pinged for
+# EXIT_GRACE seconds the browser is gone, so the app shuts itself down instead of
+# lingering as an orphan server. Moving between pages keeps pinging, so it
+# survives navigation.
+_last_seen = time.time()
+EXIT_GRACE = 10  # seconds of silence before the app quits
+
+
+class _HideHeartbeat(logging.Filter):
+    """Keep the 3-second /alive heartbeat out of the request log."""
+    def filter(self, record):
+        return "/alive" not in record.getMessage()
+
+
+logging.getLogger("werkzeug").addFilter(_HideHeartbeat())
+
+
+@app.get("/alive")
+def alive():
+    """Heartbeat from an open page; resets the shutdown timer."""
+    global _last_seen
+    _last_seen = time.time()
+    return ("", 204)
+
+
+def watch_for_close():
+    """When no page has pinged for a while, the browser is gone: shut down."""
+    while True:
+        time.sleep(2)
+        if time.time() - _last_seen > EXIT_GRACE:
+            os._exit(0)
+
+
+def theme_console():
+    """Dress the console window to match the app: green on black, with a banner."""
+    if sys.platform.startswith("win"):
+        try:
+            ctypes.windll.kernel32.SetConsoleTitleW("HackOn Photo & Video DeDupe")
+            os.system("color 0A")  # black background, bright green text
+        except Exception:
+            pass
+    print(
+        "\n  ==============================================================\n"
+        "   HackOn Photo & Video DeDupe   ::   HackOn Systems\n"
+        "  ==============================================================\n"
+        "   C:\\> SERVER RUNNING  ->  http://127.0.0.1:5000\n"
+        "   C:\\> Close the browser window to quit.\n"
+    )
+
+
 if __name__ == "__main__":
     try:
+        theme_console()
         open_browser_once()
-        app.run(debug=DEBUG)  # set HACKON_DEBUG=1 to reload on save (dev only)
+        if DEBUG:
+            app.run(debug=True)  # dev: auto-reload on save + in-browser debugger
+        else:
+            # App mode: a real WSGI server (no dev-server warning), and quit
+            # when the browser closes.
+            threading.Thread(target=watch_for_close, daemon=True).start()
+            from waitress import serve
+            serve(app, host="127.0.0.1", port=5000, threads=8)
     except (Exception, SystemExit) as error:  # e.g. the port is already in use
         # 0 = normal exit. 3 = the auto-reloader restarting the app after a
         # code change (it does this on purpose every time a file is saved).

@@ -7,11 +7,12 @@ exactly where it came from.
 import shutil
 from datetime import datetime
 from pathlib import Path
+import paths
 
 from safejson import read_json, write_json
 from scan import REVIEW_FOLDER
 
-MOVES_FILE = Path(__file__).parent / "moves.json"
+MOVES_FILE = paths.user_data("moves.json")
 
 
 def valid_moves(data):

@@ -11,14 +11,15 @@ it has one (see vault.py), and are only in settings.json when it doesn't.
 import copy
 import uuid
 from pathlib import Path
+import paths
 
 import vault
 from safejson import read_json, write_json
 
-SETTINGS_FILE = Path(__file__).parent / "settings.json"
+SETTINGS_FILE = paths.user_data("settings.json")
 
 # Shortcuts used to live in their own file; they're moved into settings.json.
-OLD_SHORTCUTS_FILE = Path(__file__).parent / "shortcuts.json"
+OLD_SHORTCUTS_FILE = paths.user_data("shortcuts.json")
 
 # The media apps the setup screen knows about: settings key -> details.
 SERVICES = {

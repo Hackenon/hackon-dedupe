@@ -9,8 +9,9 @@ inline code/bold/links, and pipe tables.
 import html
 import re
 from pathlib import Path
+import paths
 
-DOCS = Path(__file__).parent / "docs"
+DOCS = paths.bundled("docs")
 
 
 def _slug(text):

@@ -31,3 +31,5 @@ site/
 bin/
 unplayable.json
 PLAN.md
+build/
+dist/

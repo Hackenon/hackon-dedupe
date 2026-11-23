@@ -20,9 +20,10 @@ import urllib.parse
 import uuid
 from datetime import datetime
 from pathlib import Path
+import paths
 
 APP_FOLDER = Path(__file__).parent
-LOG_FOLDER = APP_FOLDER / "logs"
+LOG_FOLDER = paths.user_data("logs")
 
 # Where bug reports go if no repository is set in SETUP. Set this before release.
 DEFAULT_REPO = "Hackenon/hackon-dedupe"  # confirmed public repo for bug reports (create the repo before release)

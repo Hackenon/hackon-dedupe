@@ -11,9 +11,9 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+import paths
 
-APP_FOLDER = Path(__file__).resolve().parent
-_REGISTRY = APP_FOLDER / "unplayable.json"
+_REGISTRY = paths.user_data("unplayable.json")
 
 # Extensions an HTML5 <video> can usually decode. Everything else goes to VLC.
 # (A codec it still can't handle -- e.g. HEVC inside .mp4/.mov -- fires the
