@@ -7,7 +7,7 @@ Commodore 64 more than my own sister back then.  I remember spending hours on it
 playing games and hand keying in programs from magazines like the old *Compute!'s 
 Gazette*.  
 
-In the seventh grade I took my Commodore to school for show and tell. I shared the
+In the Sixth grade I took my Commodore to school for show and tell. I shared the
 game [Little Computer People](https://en.wikipedia.org/wiki/Little_Computer_People),
 permanently cementing my nerd cred. Many noogies and wedgies followed.
 
@@ -21,7 +21,7 @@ for the college. I manned an open lab for all programming students, including th
 with non-programming majors. I tutored in Java, C++, and C# primarily. I learned
 and reinforced a structured-programming mindset that has served me well. In May of
 2015 I graduated from HCC with a 3.9 GPA — an Associate in Arts (Highest Honors) in
-Application Development with C#.
+Application Development with C#. At the time I was planning to get a bachelor's degree.
 
 In 2011, while still maintaining my course studies and tutoring, I also worked full
 time at Hewlett-Packard as a build and QA tech. I learned a lot about hardware:
@@ -60,7 +60,8 @@ will soon release my first project under a source-available model for human
 inspection. Clear code that is well-formatted and easily maintainable by humans and
 AI:
 
-- No spaghetti code. Built in debug mode.
+- No spaghetti code. 
+- A built-in debug routine that can be switched on and off.
 - No countless errors and untested exceptions.
 - API-inclusive programming design, because I don't have to rewrite everything.
 - No refactoring nightmare when you try to change something basic in the interface.
