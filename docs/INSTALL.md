@@ -46,6 +46,9 @@ Pull/download the new code, then with the virtual environment active run
 | `results.json`, `movie_results.json`, `tv_results.json` | The latest scan results |
 | `fingerprints.json` | Cached photo fingerprints (so rescans are fast) |
 | `moves.json`, `movie_moves.json`, `tv_moves.json` | Undo history for moves |
+| `deleted_photos.json`, `deleted_movies.json`, `deleted_tv.json` | Records of files you deleted out of `_review` (kept for a future recovery feature) |
+| `unplayable.json` | Which files the Play button couldn't play (so it stays greyed) |
+| `perf.json` | Learned read speed, for the full-hash time estimate |
 | `logs/` | Error logs (only if something went wrong) |
 | `_review/` (inside a scanned/root folder) | Files you moved, waiting for you to delete or undo |
 
@@ -55,6 +58,7 @@ To start completely fresh, close the app and delete those files.
 Delete the app folder (including `.venv`). To also clear saved keys, sign out of Plex in Setup and
 remove the app's entries from Windows Credential Manager / macOS Keychain (named `hackon-dedupe`).
 
-## Notes for a future packaged release (not yet available)
-A one-click installer (Windows `.exe` / Mac `.app`) with Python and FFmpeg bundled is on the
-roadmap, so end users won't need the steps above. Until then, the from-source steps are the way.
+## Notes on a packaged release
+A windowed desktop build (its own window; quits when you close the browser) exists for Windows. A
+one-click **installer** — signed Windows `.exe` / Mac `.app`, with Python and FFmpeg bundled — is
+still on the roadmap, so until then the from-source steps above are the way.

@@ -1738,7 +1738,8 @@ def theme_console():
 if __name__ == "__main__":
     try:
         theme_console()
-        open_browser_once()
+        if "--no-browser" not in sys.argv:
+            open_browser_once()
         if DEBUG:
             app.run(debug=True)  # dev: auto-reload on save + in-browser debugger
         else:

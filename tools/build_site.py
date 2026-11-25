@@ -39,7 +39,7 @@ def shell(title, body, active):
         "  <nav>" + links + "</nav>\n</div></header>\n" + body + "\n"
         "<footer class=\"site\"><div class=\"wrap\">\n"
         "  <div>&copy; 2026 HackOn Systems &middot; <a href=\"" + GITHUB + "\" target=\"_blank\" rel=\"noopener\">Source on GitHub</a></div>\n"
-        "  <div class=\"fine\">Not affiliated with Plex, Radarr or Sonarr. Works alongside them.</div>\n"
+        "  <div class=\"fine\">Not affiliated with Plex, Jellyfin, Radarr or Sonarr. Works alongside them.</div>\n"
         "</div></footer>\n</body>\n</html>\n")
 
 
@@ -47,9 +47,9 @@ def landing():
     features = [
         ("PHOTO DUPLICATES", "Exact copies and look-alikes &mdash; resized, re-saved, or back-to-back burst shots &mdash; found with perceptual fingerprints. Empty folders are listed for cleanup too."),
         ("MOVIES &amp; TV", "Finds extra copies, stray folders and empty folders in your Radarr and Sonarr libraries. Move extras to a default or a browsed location; the file the manager tracks is always kept."),
-        ("WORKS WITH PLEX", "Hides the review folder from Plex and asks it to rescan after any change, so your library stays in sync."),
+        ("WORKS WITH PLEX &amp; JELLYFIN", "Hides the review folder from your media server (Plex or Jellyfin) and asks it to rescan after any change, so your library stays in sync."),
         ("SAFE BY DESIGN", "Nothing is ever deleted. Extras move to a <code>_review</code> folder with full undo, and a group is skipped unless something is kept."),
-        ("LOCAL &amp; PRIVATE", "Runs on your own PC at <code>127.0.0.1</code>. Your files, API keys and Plex token never leave your machine."),
+        ("LOCAL &amp; PRIVATE", "Runs on your own PC at <code>127.0.0.1</code>. Your files, API keys and server tokens never leave your machine."),
         ("FREE &amp; OPEN SOURCE", "On GitHub for anyone to read, run and improve. No account, no cloud, no tracking."),
     ]
     cards = "".join("<div class='card'><h3>" + t + "</h3><p>" + d + "</p></div>" for t, d in features)
@@ -57,10 +57,10 @@ def landing():
     return (
         "\n<section class=\"hero\">\n"
         "  <img class=\"logo\" src=\"assets/logo-hackon.svg\" alt=\"HackOn Photo & Video DeDupe\">\n"
-        "  <div class=\"tag\">// NOW WITH ADVANCED MEDIA RECOVERY</div>\n"
+        "  <div class=\"tag\">// ADVANCED MEDIA RECOVERY &mdash; COMING SOON</div>\n"
         "  <p class=\"pitch\">A retro, terminal-styled desktop app that hunts down duplicate and near-duplicate\n"
-        "  photos and videos &mdash; and cleans up the extra movie and TV copies hiding in your Radarr, Sonarr\n"
-        "  and Plex libraries. Safely: nothing is deleted, everything can be undone.</p>\n"
+        "  photos and videos &mdash; and cleans up the extra movie and TV copies hiding in your Radarr, Sonarr,\n"
+        "  Plex and Jellyfin libraries. Safely: nothing is deleted, everything can be undone.</p>\n"
         "  <div class=\"btns\">\n"
         "    <a class=\"btn primary\" href=\"" + DOWNLOAD + "\">&#9654; DOWNLOAD</a>\n"
         "    <a class=\"btn\" href=\"install.html\">INSTALL GUIDE</a>\n"
