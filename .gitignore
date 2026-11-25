@@ -35,5 +35,6 @@ bin/
 unplayable.json
 perf.json
 PLAN.md
+DEPLOY.local.md
 build/
 dist/
