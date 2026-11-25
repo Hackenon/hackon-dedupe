@@ -1,5 +1,5 @@
 """Discovery: find the media apps HackOn knows about on this computer's own
-network -- Radarr, Sonarr and Plex (supported today), and Jellyfin, Emby,
+network -- Radarr, Sonarr, Plex and Jellyfin (supported today), and Emby,
 Medusa and SickGear (detected and reported as "not yet supported").
 
 A deliberate, button-only sweep of the local /24 (e.g. 192.168.20.1-254) on

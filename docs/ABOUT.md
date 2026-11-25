@@ -2,7 +2,7 @@
 
 *The story behind HackOn Photo & Video DeDupe — and the person building it.*
 
-My father bought us a brand new Commodore 64 for Christmas of 1982. I loved that
+My father bought us a brand new **Commodore 64** for Christmas of 1982. I loved that
 Commodore 64 more than my own sister back then.  I remember spending hours on it 
 playing games and hand keying in programs from magazines like the old *Compute!'s 
 Gazette*.  
@@ -17,11 +17,12 @@ Computer Network Systems Administration.
 
 Later I decided to go back and learn to program, so in 2011 I decided to go all in.
 Not only did I attend Houston Community College, but I took the job as a paid tutor
-for the college. I manned an open lab for all programming students, including those
-with non-programming majors. I tutored in Java, C++, and C# primarily. I learned
-and reinforced a structured-programming mindset that has served me well. In May of
-2015 I graduated from HCC with a 3.9 GPA — an Associate in Arts (Highest Honors) in
-Application Development with C#. At the time I was planning to get a bachelor's degree.
+for the college. I manned the department open lab for all programming students, 
+including those with non-programming majors. I tutored in Java, C++, and C# primarily. 
+I learned and reinforced a structured-programming mindset that has served me well. 
+In May of 2015 I graduated from HCC with a 3.9 GPA — an Associate in Arts (Highest 
+Honors) in Application Development with C#. At the time I was planning to get a 
+bachelor's degree.
 
 In 2011, while still maintaining my course studies and tutoring, I also worked full
 time at Hewlett-Packard as a build and QA tech. I learned a lot about hardware:
@@ -69,3 +70,5 @@ AI:
 - A full setup and help documentation set.
 
 All AI-generated, with my direct control. All on less than $20 of Claude.
+
+What can I help you build?

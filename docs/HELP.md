@@ -25,7 +25,12 @@ connect Radarr, Sonarr, and a media server (Plex or Jellyfin).
    back exactly where it was.
 5. **Empty folders** — a section lists any folder under your scan with no photos or videos.
    Completely empty ones are ticked for you; folders that still hold other files are shown so you can
-   decide. **DELETE SELECTED PERMANENTLY** removes the ticked ones (this one has no undo).
+   decide. **DELETE SELECTED PERMANENTLY** removes the ticked ones (**THIS HAS NO UNDO**).
+   
+## (the "Trace") If a Photo file was moved or renamed after a scan recovery can be attempted.
+Open a photo that's since moved and the app runs **TRACE.EXE**: it sweeps the scanned folder to
+find the file again (by timestamp, picture fingerprint or exact match), shows it, and offers to
+**RECOVER** — which just updates where the results look. No files are moved by a trace.
 
 ### Kinds of match
 - **Exact duplicates** — byte-for-byte identical files.
@@ -46,7 +51,7 @@ you scan a Plex or Jellyfin library folder without typing a path.
   you can decide what to do. Tick to move.
 - **Empty folders** — their own section, listing folders with no video. Completely empty ones are
   pre-ticked; folders that still hold files (posters, `.nfo`) are shown and left unticked.
-  **DELETE SELECTED PERMANENTLY** removes the ticked ones (no undo).
+  **DELETE SELECTED PERMANENTLY** removes the ticked ones (**THIS HAS NO UNDO**).
 - **Two move options** — **MOVE → DEFAULT** sends ticked items to the per-app default move folder
   (set in **Setup > Options**; when it's blank they go to a `_review` folder inside each root, with
   `_review/*` added to `.plexignore`, or an `.ignore` file for Jellyfin). **MOVE TO LOCATION…** browses to a folder to relocate a stray
@@ -59,11 +64,6 @@ you scan a Plex or Jellyfin library folder without typing a path.
   the scan theater and shows a time estimate.
 - **Tracked-file warning** — if you tick a file Radarr/Sonarr still tracks, you're warned, because
   moving it may make them re-download it.
-
-## If a file was moved or renamed after a scan (the "trace")
-Open a photo that's since moved and the app runs **TRACE.EXE**: it sweeps the scanned folder to
-find the file again (by timestamp, picture fingerprint or exact match), shows it, and offers to
-**RECOVER** — which just updates where the results look. No files are moved by a trace.
 
 ## Setup
 Pick each app from its dropdown — a **media server** (Plex or Jellyfin) and a **movie/TV library

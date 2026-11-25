@@ -4,10 +4,10 @@
 - **Python 3.10 or newer** (the app is developed on 3.15).
 - Windows 10/11 or macOS. A local folder or a network share to scan.
 - **FFmpeg / ffprobe** (for video resolution, codec and length) is handled for you:
-  on Windows, open **Setup &rarr; Options** and click **GET FFMPEG** &mdash; the app downloads it into
-  its own folder (no winget, no admin, nothing installed system-wide). On macOS, if a system
+  on Windows, open **Setup → Options** and click **GET FFMPEG** — the app downloads it into
+  its own folder (no winget, no admin, nothing installed system-wide). On macOS, if
   `ffprobe` is on your PATH the app uses it; a one-click download for Mac is coming. Photo and
-  movie/TV duplicate-finding works with or without it &mdash; it only adds the video details column.
+  movie/TV duplicate-finding works with or without it — it only adds the video details column.
 
 ## Install & run (from source)
 ```
@@ -26,12 +26,14 @@ pip install -r requirements.txt
 # 5. Run it
 python app.py
 ```
-The app opens your default browser at **http://127.0.0.1:5000** automatically. (Start it with
-`python app.py --no-browser` to skip that.)
+The app opens your default browser at **http://127.0.0.1:5000** automatically. Start it with
+`python app.py --no-browser` to skip that — useful when you're running it on a headless
+machine or want to open the page yourself (the web interface is the only UI, so you'll still
+browse to that address).
 
 ## First run
 1. The **SETUP** page opens. You can **SKIP FOR NOW** — photo scanning needs no setup.
-2. Optional: on first run, press **PROBE LOCAL NETWORK** to find Radarr/Sonarr/Plex, or enter them
+2. Optional: on first run, press **PROBE LOCAL NETWORK** to find Radarr/Sonarr/Plex/Jellyfin, or enter them
    by hand, then **SAVE SETTINGS**.
 3. Go to **PHOTO SCAN**, pick a folder, and **RUN SCAN**.
 
