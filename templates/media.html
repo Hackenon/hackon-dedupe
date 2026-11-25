@@ -30,6 +30,20 @@
       <button class="secondary" id="browse-folder">BROWSE...</button>
       <button id="scan-folder">&#9654; SCAN FOLDER</button>
     </div>
+    {% if library_shortcuts %}
+    <div class="row">
+      <span class="label"></span>
+      <span class="meta">// OR PICK A LIBRARY FOLDER DETECTED FROM YOUR MEDIA SERVER, THEN SCAN FOLDER:</span>
+    </div>
+    <div class="row">
+      <span class="label"></span>
+      <span>
+        {% for shortcut in library_shortcuts %}
+          <button class="secondary use-shortcut" data-path="{{ shortcut.path }}" title="{{ shortcut.path }}">{{ shortcut.name | upper }}</button>
+        {% endfor %}
+      </span>
+    </div>
+    {% endif %}
     <p class="meta">// SCAN ANY FOLDER OF {{ page.things | upper }}S, NO {{ page.app | upper }} NEEDED. FINDS THE SAME
        {{ page.one_thing | upper }} IN SEVERAL FILES, IDENTICAL FILES{{ ", AND SEVERAL VIDEOS IN ONE MOVIE FOLDER" if page.one_thing == "movie" }}.
        YOU CHOOSE WHAT TO KEEP.</p>
@@ -58,7 +72,7 @@
       <div class="panel action-bar" id="move-bar">
         <button id="move-ticked">&#9654; MOVE <span id="move-count">{{ to_move }}</span> TICKED &rarr; {% if move_default %}DEFAULT{% else %}_REVIEW{% endif %}</button>
         <button class="secondary" id="move-location">MOVE TICKED TO LOCATION...</button>
-        {% if can_undo %}<button class="secondary" id="undo-move">UNDO LAST MOVE</button>{% endif %}
+        <button id="undo-move" {{ "disabled" if not can_undo }}>&#9664; UNDO LAST MOVE</button>
         <span class="warn" id="tracked-warn" {{ "hidden" if not tracked_to_move }}>
           !! {{ tracked_to_move }} TICKED FILE(S) ARE STILL TRACKED BY {{ page.app | upper }}. MOVING THEM MAY MAKE {{ page.app | upper }} RE-DOWNLOAD THEM.</span>
         <span id="move-result" class="meta"></span>
@@ -81,7 +95,7 @@
             <tr><td>WITH EXTRA VIDEO FILES</td><td>{{ c.with_extra_files }} {{ page.group_label }} / {{ c.extra_files }} files / {{ c.extra_bytes | size }}</td></tr>
             <tr><td>STRAY FOLDERS / FILES</td><td>{{ c.strays }}</td></tr>
           {% endif %}
-          {% if c.missing_folders %}<tr><td>FOLDER MISSING</td><td class="warn">{{ c.missing_folders }} ({{ page.app }} has files, but the folder isn't there)</td></tr>{% endif %}
+          {% if c.missing_folders %}<tr><td>PATH NOT FOUND</td><td class="warn">{{ c.missing_folders }} ({{ page.app }} has files, but the configured path didn't resolve &mdash; check Settings)</td></tr>{% endif %}
           {% if c.unmapped %}<tr><td>NOT CHECKED</td><td class="warn">{{ c.unmapped }} ({{ "listed below" if results.unmapped else "scan again to see which" }})</td></tr>{% endif %}
         </table>
       </div>
@@ -111,6 +125,16 @@
           <h3>{{ group.title }}{% if group.year %} ({{ group.year }}){% endif %}{% if group.episode %} :: {{ "EPISODE UNKNOWN" if group.episode == "?" else group.episode }}{% endif %} :: {{ group.files | length }} files</h3>
           {% if group.reasons %}
             <p class="meta">// GROUPED BECAUSE: {{ group.reasons | join(", ") | upper }}</p>
+          {% endif %}
+          {% if group.verify_sampled %}
+            <p class="warn verify-line" data-group="{{ group.id }}">!! LIKELY IDENTICAL -- MATCHED ON FIRST+LAST 50MB ONLY, NOT FULLY VERIFIED.
+              <button class="secondary verify-group" data-group="{{ group.id }}">VERIFY (FULL HASH)</button>{% if verify_estimates.get(group.id) %}<span class="meta"> // {{ verify_estimates[group.id] }}</span>{% endif %}</p>
+          {% elif group.verified %}
+            {% if group.verified_identical %}
+              <p class="meta">[OK] VERIFIED IDENTICAL (FULL HASH)</p>
+            {% else %}
+              <p class="warn">!! VERIFIED: NOT ALL FILES ARE IDENTICAL -- THESE MATCH:{% for cluster in group.verify_clusters %}<br>&nbsp;&nbsp;{{ cluster | join(" = ") }}{% endfor %}</p>
+            {% endif %}
           {% endif %}
           {% if not group.has_tracked and not folder_mode %}
             <p class="warn">!! {{ page.app | upper }} HAS NO FILE FOR THIS {{ page.one_thing | upper }}. NONE OF THESE ARE TRACKED.</p>
@@ -228,11 +252,19 @@
       {% endif %}
 
       {% if results.missing_folders %}
-        <h2>Folder missing <small>{{ results.missing_folders | length }}</small></h2>
+        <h2>Path not found <small>{{ results.missing_folders | length }}</small></h2>
         <div class="group">
-          {% for movie in results.missing_folders %}
-            <p class="filename">{{ movie.title }} ({{ movie.year }}) <span class="meta">// {{ movie.folder }}</span></p>
-          {% endfor %}
+          <p class="error">// Path to files not found. Check the settings tab and confirm.</p>
+          <table class="movie-files">
+            <tr><th>NAME</th><th>CONFIGURED PATH (NOT FOUND)</th><th>{{ page.app | upper }} PATH</th></tr>
+            {% for movie in results.missing_folders %}
+              <tr>
+                <td>{{ movie.title }}{% if movie.year %} ({{ movie.year }}){% endif %}</td>
+                <td class="filename">{{ movie.folder }}</td>
+                <td class="filename">{{ movie.server_path }}</td>
+              </tr>
+            {% endfor %}
+          </table>
         </div>
       {% endif %}
     {% else %}
@@ -340,7 +372,7 @@
       document.getElementById("empties-delete").addEventListener("click", async () => {
         const paths = [...emptiesTable.querySelectorAll("input:checked")].map(b => b.dataset.path);
         if (!paths.length) return;
-        if (!confirm(`Permanently delete ${paths.length} folder(s) and everything in them?\n\nThis cannot be undone.`)) return;
+        if (!await themedConfirm(`Permanently delete ${paths.length} folder(s) and everything in them?\n\nThis cannot be undone.`)) return;
         const result = document.getElementById("empties-result");
         result.textContent = "DELETING...";
         const data = await (await fetch(`/${KIND}/empty-folders/delete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths }) })).json();
@@ -372,6 +404,14 @@
       startScan(`/${KIND}/details`, {}, "C:\\> FFPROBE.EXE /DETAILS /MISSING-ONLY"));
 
     const folderInput = document.getElementById("scan-folder-path");
+    document.querySelectorAll(".use-shortcut").forEach(btn => btn.addEventListener("click", () => {
+      folderInput.value = btn.dataset.path;
+      folderInput.scrollIntoView({ block: "center" });
+      folderInput.focus();
+    }));
+
+    document.querySelectorAll(".verify-group").forEach(btn => btn.addEventListener("click", () =>
+      startScan(`/${KIND}/verify/${btn.dataset.group}`, {}, "C:\\> HACKON.EXE  /VERIFY GROUP " + btn.dataset.group)));
     document.getElementById("scan-folder").addEventListener("click", () =>
       startScan(`/${KIND}/scan-folder`, { folder: folderInput.value },
                 `C:\\> HACKON.EXE /${KIND.toUpperCase()} "${folderInput.value}"`));
@@ -433,7 +473,7 @@
     async function runMove(body, confirmText) {
       const n = Number(moveCount.textContent);
       if (!n) { document.getElementById("move-result").textContent = "NOTHING TICKED TO MOVE."; return; }
-      if (!confirm(confirmText + trackedMsg() + "\n\nNothing is deleted; UNDO puts them back.")) return;
+      if (!await themedConfirm(confirmText + trackedMsg() + "\n\nNothing is deleted; UNDO puts them back.")) return;
       const result = document.getElementById("move-result");
       result.className = "meta"; result.textContent = "MOVING...";
       const { ok, data } = await postJSON(`/${KIND}/move`, body);
@@ -457,7 +497,7 @@
 
     const undoButton = document.getElementById("undo-move");
     if (undoButton) undoButton.addEventListener("click", async () => {
-      if (!confirm("Undo the last move? Files go back where they were.")) return;
+      if (!await themedConfirm("Undo the last move? Files go back where they were.")) return;
       const result = document.getElementById("move-result");
       result.className = "meta"; result.textContent = "UNDOING...";
       const { ok, data } = await postJSON(`/${KIND}/undo`);

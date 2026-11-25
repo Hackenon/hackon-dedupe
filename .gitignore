@@ -15,6 +15,9 @@ settings.json
 movie_results.json
 *.broken-*.json
 tv_results.json
+deleted_photos.json
+deleted_movies.json
+deleted_tv.json
 *.migrated
 *.migrated-*
 logs/
@@ -30,6 +33,7 @@ site/
 # Downloaded ffprobe (fetched at runtime, not source)
 bin/
 unplayable.json
+perf.json
 PLAN.md
 build/
 dist/

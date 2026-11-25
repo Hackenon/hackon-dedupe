@@ -1,4 +1,6 @@
-"""Discovery: find Radarr, Sonarr and Plex on this computer's own network.
+"""Discovery: find the media apps HackOn knows about on this computer's own
+network -- Radarr, Sonarr and Plex (supported today), and Jellyfin, Emby,
+Medusa and SickGear (detected and reported as "not yet supported").
 
 A deliberate, button-only sweep of the local /24 (e.g. 192.168.20.1-254) on
 just the ports this app supports. It never scans anything wider, never runs on
@@ -22,6 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import arr
 import arrkey
+import providers
 from netpaths import this_computer_address
 
 ENABLED = True
@@ -32,9 +35,12 @@ MAX_WORKERS = 64
 
 # What we look for, and on which port. The port tells Radarr from Sonarr.
 TARGETS = [
-    {"service": "radarr", "name": "Radarr", "port": 7878, "kind": "arr"},
-    {"service": "sonarr", "name": "Sonarr", "port": 8989, "kind": "arr"},
-    {"service": "plex", "name": "Plex", "port": 32400, "kind": "plex"},
+    {"service": "radarr", "name": "Radarr", "port": 7878, "kind": "arr", "status": "available"},
+    {"service": "sonarr", "name": "Sonarr", "port": 8989, "kind": "arr", "status": "available"},
+    {"service": "plex", "name": "Plex", "port": 32400, "kind": "plex", "status": "available"},
+    # Known but not yet supported -- detected so the user sees them on the roadmap.
+    {"service": "jellyfin_emby", "name": "Jellyfin/Emby", "port": 8096, "kind": "emby_api", "status": "planned"},
+    {"service": "medusa_sickgear", "name": "Medusa/SickGear", "port": 8081, "kind": "medusa_html", "status": "planned"},
 ]
 
 
@@ -98,6 +104,45 @@ def _confirm_plex(url):
         return None
 
 
+def _confirm_emby(url):
+    """Identify a Jellyfin or Emby server from its public info endpoint (no sign-in
+    needed). Returns (service, display_name, server_id) or None."""
+    try:
+        request = urllib.request.Request(f"{url}/System/Info/Public",
+                                         headers={"Accept": "application/json"})
+        with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
+            data = json.loads(response.read().decode("utf-8", "replace"))
+    except (urllib.error.URLError, OSError, json.JSONDecodeError, TimeoutError):
+        return None
+    product = (data.get("ProductName") or "").lower()
+    server_id = data.get("Id") or ""
+    if "emby" in product:
+        return "emby", "Emby", server_id
+    if "jellyfin" in product:
+        return "jellyfin", "Jellyfin", server_id
+    if data.get("Version") and ("ServerName" in data or "StartupWizardCompleted" in data):
+        return "jellyfin", "Jellyfin", server_id
+    return None
+
+
+def _confirm_medusa(url):
+    """Best-effort identify Medusa or SickGear from its login page. Returns
+    (service, display_name) or None."""
+    try:
+        request = urllib.request.Request(f"{url}/", headers={"Accept": "text/html"})
+        with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
+            body = response.read(8192).decode("utf-8", "replace").lower()
+    except (urllib.error.URLError, OSError, TimeoutError):
+        return None
+    if "medusa" in body:
+        return "medusa", "Medusa"
+    if "sickgear" in body:
+        return "sickgear", "SickGear"
+    if "sickrage" in body or "sickbeard" in body:
+        return "sickgear", "SickGear"
+    return None
+
+
 def _check(host, target):
     """Return a discovery dict if `target` is running at `host`, else None.
     `machine` identifies the instance so two addresses of one server group."""
@@ -105,7 +150,8 @@ def _check(host, target):
     if latency is None:
         return None
     url = f"http://{host}:{target['port']}"
-    if target["kind"] == "arr":
+    kind = target["kind"]
+    if kind == "arr":
         found, key = _confirm_arr(url, target["name"])
         if not found:
             return None
@@ -113,11 +159,34 @@ def _check(host, target):
         # we can't prove it, so each address stands on its own.
         machine = f"{target['service']}:{key}" if key else f"{target['service']}@{url}"
         return {"service": target["service"], "name": target["name"], "machine": machine,
-                "url": url, "api_key": key or "", "has_key": bool(key), "ms": round(latency)}
-    plex_machine = _confirm_plex(url)
-    if plex_machine:
-        return {"service": target["service"], "name": target["name"], "machine": f"plex:{plex_machine}",
-                "url": url, "api_key": "", "has_key": False, "ms": round(latency)}
+                "url": url, "api_key": key or "", "has_key": bool(key), "ms": round(latency),
+                "supported": True, "status": "available"}
+    if kind == "plex":
+        plex_machine = _confirm_plex(url)
+        if plex_machine:
+            return {"service": target["service"], "name": target["name"], "machine": f"plex:{plex_machine}",
+                    "url": url, "api_key": "", "has_key": False, "ms": round(latency),
+                    "supported": True, "status": "available"}
+        return None
+    if kind == "emby_api":
+        info = _confirm_emby(url)
+        if not info:
+            return None
+        service, name, server_id = info
+        avail = providers.is_available(service)
+        machine = f"{service}:{server_id}" if server_id else f"{service}@{url}"
+        return {"service": service, "name": name, "machine": machine,
+                "url": url, "api_key": "", "has_key": False, "ms": round(latency),
+                "supported": avail, "status": "available" if avail else "planned"}
+    if kind == "medusa_html":
+        info = _confirm_medusa(url)
+        if not info:
+            return None
+        service, name = info
+        avail = providers.is_available(service)
+        return {"service": service, "name": name, "machine": f"{service}@{url}",
+                "url": url, "api_key": "", "has_key": False, "ms": round(latency),
+                "supported": avail, "status": "available" if avail else "planned"}
     return None
 
 
@@ -154,6 +223,8 @@ def _group(discoveries):
                  "ms": a["ms"], "preferred": False} for a in addresses]
         if len(rows) > 1:
             rows[0]["preferred"] = True  # fastest to answer
-        out.append({"service": service, "name": addresses[0]["name"], "addresses": rows})
-    out.sort(key=lambda g: (g["name"], g["addresses"][0]["url"]))
+        out.append({"service": service, "name": addresses[0]["name"], "addresses": rows,
+                    "supported": addresses[0].get("supported", True),
+                    "status": addresses[0].get("status", "available")})
+    out.sort(key=lambda g: (not g["supported"], g["name"], g["addresses"][0]["url"]))
     return out

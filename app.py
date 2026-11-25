@@ -40,6 +40,12 @@ import netscan  # netscan
 import helpdocs
 import plex
 import plexbackdoor  # backdoor
+import providers
+import libmanager
+import mediaserver
+import jellyfin
+import exact
+import perf
 import vault
 from mediatools import folder_contents, folder_key, video_files
 from netpaths import network_host, network_prefix, swap_host, to_server_path, translate
@@ -357,6 +363,7 @@ def setup():
     services = [
         {
             "key": service,
+            "role": providers.role_of(service),
             **details,
             "url": settings[service]["url"],
             "key_hint": mask(settings[service]["api_key"]),
@@ -365,18 +372,35 @@ def setup():
         }
         for service, details in SERVICES.items()
     ]
+    # Per-role provider pickers: options (available first, planned shown as
+    # "coming soon") and the provider currently chosen for the role.
+    pickers = {
+        role: {"name": providers.ROLES[role]["name"],
+               "blurb": providers.ROLES[role]["blurb"],
+               "options": providers.options_for(role),
+               "selected": settings["roles"].get(role, "")}
+        for role in providers.ROLES
+    }
     plex_settings = settings["plex"]
+    jellyfin_settings = settings.get("jellyfin", {})
     session["saw_setup"] = True  # don't force Photo Scan back here again
     return render_template(
         "setup.html",
         help_toc=helpdocs.contents("HELP.md"),
         services=services,
+        pickers=pickers,
         plex={
             "url": plex_settings["url"],
             "signed_in": bool(plex_settings["token"]),
             "backdoor": plexbackdoor.is_open(settings),  # backdoor
             "path_map": plex_settings["path_map"],
             "rescan_after_move": plex_settings["rescan_after_move"],
+        },
+        jellyfin={
+            "url": jellyfin_settings.get("url", ""),
+            "key_hint": mask(jellyfin_settings.get("api_key", "")),
+            "path_map": jellyfin_settings.get("path_map", {}),
+            "rescan_after_move": jellyfin_settings.get("rescan_after_move", True),
         },
         first_run=not settings["setup_done"],
         network_prefix=network_prefix(),
@@ -517,12 +541,31 @@ def setup_save():
         },
         "rescan_after_move": bool(plex_page.get("rescan_after_move", True)),
     })  # the token is never taken from the page; only sign-in sets it
+    jelly = form.get("jellyfin") or {}
+    jkey = (jelly.get("api_key") or "").strip() or settings.get("jellyfin", {}).get("api_key", "")
+    settings["jellyfin"] = {
+        "url": jellyfin.normalize_url(jelly.get("url", "")),
+        "api_key": jkey,
+        "path_map": {
+            server_path: pc_path.strip()
+            for server_path, pc_path in (jelly.get("path_map") or {}).items()
+        },
+        "rescan_after_move": bool(jelly.get("rescan_after_move", True)),
+    }
+    key_hints["jellyfin"] = mask(jkey)
     repo = str((request.json or {}).get("bug_report_repo", settings["bug_report_repo"])).strip().strip("/")
     if repo.startswith("https://github.com/"):
         repo = repo[len("https://github.com/"):]
     settings["bug_report_repo"] = repo
     if (request.json or {}).get("media_details") in ("button", "auto"):
         settings["media_details"] = request.json["media_details"]
+    roles_in = (request.json or {}).get("roles") or {}
+    roles = settings.get("roles", {}) or {}
+    for role in providers.ROLES:
+        chosen = roles_in.get(role, "")
+        roles[role] = chosen if (chosen and providers.role_of(chosen) == role
+                                 and providers.is_available(chosen)) else ""
+    settings["roles"] = roles
     settings["setup_done"] = True
     save_settings(settings)
     return {"ok": True, "key_hints": key_hints}
@@ -646,6 +689,28 @@ def plex_test():
             for folder in library["folders"]
         ]
     return {"name": name, "version": version, "libraries": found}
+
+
+@app.post("/setup/jellyfin/test")
+def jellyfin_test():
+    """Validate the Jellyfin address + API key and list its library folders.
+    Returns the same shape the generic service panel expects (root_folders)."""
+    settings = load_settings()
+    url = jellyfin.normalize_url((request.json or {}).get("url", ""))
+    api_key = ((request.json or {}).get("api_key", "") or "").strip() or settings.get("jellyfin", {}).get("api_key", "")
+    try:
+        name, version = jellyfin.server_info(url, api_key)
+        libs = jellyfin.libraries(url, api_key)
+    except jellyfin.JellyfinError as error:
+        return {"error": str(error)}, 400
+    folders, seen = [], set()
+    for lib in libs:
+        for folder in lib["folders"]:
+            if folder in seen:
+                continue
+            seen.add(folder)
+            folders.append({"path": folder, "reachable": reachable(folder), "host": network_host(folder)})
+    return {"name": name, "version": version, "root_folders": folders}
 
 
 @app.post("/setup/skip")
@@ -793,7 +858,7 @@ def media_play_stray_unplayable(kind, index):
 
 MEDIA_PAGES = {
     "movies": {
-        "service": "radarr", "app": "Radarr", "heading": "MOVIES", "things": "movie",
+        "service": "radarr", "role": "movies", "library_type": "Movies", "app": "Radarr", "heading": "MOVIES", "things": "movie",
         "one_thing": "movie", "group_label": "movies", "count_key": "movies",
         "scan_url": "/movies/scan", "load": load_movie_results, "save": save_movie_results,
         "about": "Radarr (free, radarr.video) manages a movie collection: it downloads, renames and "
@@ -803,7 +868,7 @@ MEDIA_PAGES = {
         "scan": lambda settings, progress: save_movie_results(with_details(run_movie_scan(settings, progress), progress)),
     },
     "tv": {
-        "service": "sonarr", "app": "Sonarr", "heading": "TV SHOWS", "things": "TV show",
+        "service": "sonarr", "role": "tv", "library_type": "TV", "app": "Sonarr", "heading": "TV SHOWS", "things": "TV show",
         "one_thing": "episode", "group_label": "episodes", "count_key": "shows",
         "scan_url": "/tv/scan", "load": load_tv_results, "save": save_tv_results,
         "about": "Sonarr (free, sonarr.tv) manages TV shows: it downloads, renames and sorts episodes, "
@@ -867,17 +932,25 @@ def media_page(kind):
     ensure_review_cleanup()
     page = MEDIA_PAGES[kind]
     settings = load_settings()
-    configured = is_configured(settings, page["service"])
+    configured = libmanager.configured(settings, page["role"])
     results = page["load"]()
     _, plan = media_move_plan(kind, results, settings) if results else (results, [])
+    verify_estimates = {}
+    if results:
+        for group in results.get("groups", []):
+            if group.get("verify_sampled"):
+                total_bytes = sum(file.get("size", 0) for file in group["files"])
+                verify_estimates[group["id"]] = perf.estimate_label(total_bytes)
     return render_template("media.html", page=page, kind=kind, results=results, configured=configured,
+                           verify_estimates=verify_estimates,
                            needs_details=count_needing_details(results), has_ffprobe=bool(ffprobe_path()),
                            to_move=len(plan), tracked_to_move=mediamover.tracked_in(plan),
                            can_undo=bool(mediamover.load_moves(kind)),
-                           move_default=settings[page["service"]].get("move_to", ""),
+                           move_default=(libmanager.config(settings, page["role"]) or {}).get("move_to", ""),
                            vlc_ready=playback.vlc_available(),
                            unplayable=unplayable_keys(results),
-                           unplayable_strays=unplayable_stray_keys(results))
+                           unplayable_strays=unplayable_stray_keys(results),
+                           library_shortcuts=media_library_folders(settings, page["library_type"]))
 
 
 @app.post("/<kind>/details")
@@ -907,7 +980,7 @@ def start_media_scan(kind):
     if scan_job["running"]:
         return {"error": "A scan is already running"}, 409
     settings = load_settings()
-    if not is_configured(settings, page["service"]):
+    if not libmanager.configured(settings, page["role"]):
         return {"error": f"Connect {page['app']} and map its folders in SETUP first"}, 400
     run_in_background(lambda progress: page["scan"](settings, progress))
     return {"ok": True}
@@ -1026,8 +1099,8 @@ def delete_photo_empty_folders():
 # rescan of the cleaned folder after moving photos.
 
 def plex_signed_in(settings):
-    return bool(settings["plex"]["url"] and (settings["plex"]["token"]
-                                            or plexbackdoor.is_open(settings)))  # backdoor
+    # Kept for callers; now role-aware (the active media server), Plex included.
+    return mediaserver.signed_in(settings)
 
 
 _plex_photo_cache = {}  # (url, token, path_map) -> (time, [local folders]); 5-min cache
@@ -1037,7 +1110,7 @@ def plex_photo_folders(settings):
     """Local folders of the Plex Photos library, mapped to this computer and
     reachable. Empty when Plex isn't set up with a photo library. Cached so the
     photo page doesn't call Plex on every load."""
-    if not plex_signed_in(settings):
+    if mediaserver.provider_type(settings) != "plex" or not plex_signed_in(settings):
         return []
     config = settings["plex"]
     key = (config["url"], config.get("token", ""), tuple(sorted(config["path_map"].items())))
@@ -1059,13 +1132,47 @@ def plex_photo_folders(settings):
     return folders
 
 
+_media_library_cache = {}  # (ptype, url, type, path_map) -> (time, [{name, path}]); 5-min cache
+
+
+def media_library_folders(settings, library_type):
+    """Local, reachable folders of the active media server's libraries of
+    `library_type` ("Movies"/"TV"), as [{name, path}] shortcuts for folder scans.
+
+    Works for whichever media server is set (Plex or Jellyfin). Cached so the
+    media page doesn't call the server on every load. Empty when none apply.
+    """
+    if not mediaserver.signed_in(settings):
+        return []
+    config = mediaserver.config(settings) or {}
+    path_map = config.get("path_map", {})
+    key = (mediaserver.provider_type(settings), config.get("url", ""),
+           library_type, tuple(sorted(path_map.items())))
+    hit = _media_library_cache.get(key)
+    if hit and time.time() - hit[0] < 300:
+        return hit[1]
+    shortcuts = []
+    try:
+        for library in mediaserver.libraries(settings, timeout=3):
+            if library["type"] != library_type:
+                continue
+            for server_folder in library["folders"]:
+                local = translate(server_folder, path_map)
+                if local and reachable(str(local)) and not any(s["path"] == str(local) for s in shortcuts):
+                    shortcuts.append({"name": library["title"], "path": str(local)})
+    except (plex.PlexError, jellyfin.JellyfinError, mediaserver.NotSupported):
+        shortcuts = hit[1] if hit else []
+    _media_library_cache[key] = (time.time(), shortcuts)
+    return shortcuts
+
+
 def rescan_plex(settings, library_type, local_folder=None):
     """Ask Plex to rescan its libraries of one type ("Photos", "Movies", "TV").
 
     With `local_folder`, only the library containing that folder is rescanned,
     and only that folder. Returns a message for the page.
     """
-    config = settings["plex"]
+    config = mediaserver.config(settings) or {}
     client_id = plex_client_id()
     found = [lib for lib in plex.libraries(config["url"], client_id, config["token"])
              if lib["type"] == library_type]
@@ -1085,6 +1192,22 @@ def rescan_plex(settings, library_type, local_folder=None):
             plex.refresh(config["url"], client_id, config["token"], library["key"], path=server_path)
             return f"PLEX IS RESCANNING {server_path}"
     return "PLEX NOT ASKED TO RESCAN: NO PLEX LIBRARY USES THIS FOLDER"
+
+
+def media_server_rescan(settings, library_type, local_folder=None):
+    """Ask the active media server to rescan after a move. Returns a note, or None.
+
+    Plex supports a targeted refresh of one folder; Jellyfin/Emby only have a
+    whole-library refresh, so `library_type`/`local_folder` are ignored for them.
+    """
+    ptype = mediaserver.provider_type(settings)
+    if ptype == "plex":
+        return rescan_plex(settings, library_type, local_folder)
+    if ptype in ("jellyfin", "emby"):
+        cfg = mediaserver.config(settings) or {}
+        jellyfin.refresh(cfg["url"], cfg.get("api_key", ""))
+        return f"{ptype.upper()} IS RESCANNING ITS LIBRARIES"
+    return None
 
 
 @app.post("/<kind>/scan-folder")
@@ -1230,24 +1353,73 @@ def media_undo(kind):
     return {"restored": restored, "skipped": skipped, "notes": notes}
 
 
+@app.post("/<kind>/verify/<int:group_id>")
+def verify_group(kind, group_id):
+    """Full-hash every file in a folder-scan group that was matched by sampling,
+    to confirm (or disprove) they are byte-for-byte identical. Runs in the
+    background and streams progress to the scan theater, just like a scan."""
+    if kind not in MEDIA_PAGES:
+        abort(404)
+    if scan_job["running"]:
+        return {"error": "A scan is already running"}, 409
+    page = MEDIA_PAGES[kind]
+    results = page["load"]()
+    if results is None:
+        return {"error": "Scan first"}, 400
+    group = next((g for g in results.get("groups", []) if g.get("id") == group_id), None)
+    if group is None:
+        return {"error": "Group not found"}, 404
+    folder = Path(results["folder"])
+
+    def work(progress):
+        cache = FingerprintCache()
+        by_hash = {}
+        start, total = time.perf_counter(), 0
+        for file in group["files"]:
+            path = folder / file["name"]
+            if not path.is_file():
+                progress(f"SKIPPED (file is gone): {file['name']}")
+                continue
+            size = path.stat().st_size
+            progress(f"Full-hashing {file['name']} ({size / 1_000_000:.0f} MB)")
+            by_hash.setdefault(exact.cached_fingerprint(path, cache), []).append(file["name"])
+            total += size
+        cache.save()
+        perf.record(total, time.perf_counter() - start)
+        all_match = len(by_hash) == 1
+        group["verify_sampled"] = False
+        group["verified"] = True
+        group["verified_identical"] = all_match
+        group["verify_clusters"] = [sorted(names) for names in by_hash.values()]
+        page["save"](results)
+        if all_match:
+            progress("[OK] VERIFIED IDENTICAL - every file is byte-for-byte the same")
+        else:
+            progress("!! NOT ALL IDENTICAL: " + "  |  ".join(" = ".join(n) for n in by_hash.values()))
+
+    run_in_background(work)
+    return {"ok": True}
+
+
 def media_rescans(kind, settings):
     """Ask Radarr/Sonarr and Plex to rescan after a move or undo."""
     page = MEDIA_PAGES[kind]
-    service, app_name = page["service"], page["app"]
+    role = page["role"]
     notes = []
-    config = settings[service]
-    if config["url"] and config["api_key"]:
-        try:
-            arr.rescan(config["url"], config["api_key"], app_name)
-            notes.append(f"{app_name.upper()} IS RESCANNING ITS FOLDERS")
-        except arr.ArrError as error:
-            notes.append(f"COULDN'T ASK {app_name.upper()} TO RESCAN: {error}")
+    try:
+        note = libmanager.rescan(settings, role)
+        if note:
+            notes.append(note)
+    except (arr.ArrError, libmanager.NotSupported) as error:
+        notes.append(f"COULDN'T ASK {libmanager.display_name(settings, role).upper()} TO RESCAN: {error}")
     library = "Movies" if kind == "movies" else "TV"
-    if settings["plex"]["rescan_after_move"] and plex_signed_in(settings):
+    if mediaserver.rescan_after_move(settings):
         try:
-            notes.append(rescan_plex(settings, library))
-        except plex.PlexError as error:
-            notes.append(f"COULDN'T ASK PLEX TO RESCAN: {error}")
+            note = media_server_rescan(settings, library)
+            if note:
+                notes.append(note)
+        except (plex.PlexError, jellyfin.JellyfinError) as error:
+            notes.append(f"COULDN'T ASK {mediaserver.provider_type(settings).upper()} TO RESCAN: {error}")
     return notes
 
 
@@ -1275,17 +1447,24 @@ def toggle(group_id, index):
 def move():
     results = load_results()
     settings = load_settings()
-    in_plex = plex_signed_in(settings) and to_server_path(results["folder"], settings["plex"]["path_map"]) is not None
+    in_plex = (mediaserver.provider_type(settings) == "plex" and plex_signed_in(settings)
+               and to_server_path(results["folder"], (mediaserver.config(settings) or {}).get("path_map", {})) is not None)
     count, plex_note = move_extras(results, write_plexignore=in_plex)
     save_results(results)
     flash(f"MOVED {count} FILES TO _REVIEW")
     if plex_note:
         flash(plex_note)
-    if count and settings["plex"]["rescan_after_move"] and plex_signed_in(settings):
+    if count and mediaserver.provider_type(settings) in ("jellyfin", "emby"):
+        note = mediaserver.ignore_review(settings, results["folder"])
+        if note:
+            flash(note)
+    if count and mediaserver.rescan_after_move(settings):
         try:
-            flash(rescan_plex(settings, "Photos", local_folder=results["folder"]))
-        except plex.PlexError as error:
-            flash(f"COULDN'T ASK PLEX TO RESCAN: {error}")
+            note = media_server_rescan(settings, "Photos", local_folder=results["folder"])
+            if note:
+                flash(note)
+        except (plex.PlexError, jellyfin.JellyfinError) as error:
+            flash(f"COULDN'T ASK {mediaserver.provider_type(settings).upper()} TO RESCAN: {error}")
     return redirect(url_for("start", _anchor="results"))
 
 
@@ -1299,11 +1478,13 @@ def undo():
         message += f" // {skipped} LEFT IN _REVIEW (A FILE WAS ALREADY THERE)"
     flash(message)
     settings = load_settings()
-    if restored and settings["plex"]["rescan_after_move"] and plex_signed_in(settings):
+    if restored and mediaserver.rescan_after_move(settings):
         try:
-            flash(rescan_plex(settings, "Photos", local_folder=results["folder"]))
-        except plex.PlexError as error:
-            flash(f"COULDN'T ASK PLEX TO RESCAN: {error}")
+            note = media_server_rescan(settings, "Photos", local_folder=results["folder"])
+            if note:
+                flash(note)
+        except (plex.PlexError, jellyfin.JellyfinError) as error:
+            flash(f"COULDN'T ASK {mediaserver.provider_type(settings).upper()} TO RESCAN: {error}")
     return redirect(url_for("start", _anchor="results"))
 
 

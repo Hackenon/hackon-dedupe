@@ -37,3 +37,34 @@ files next to it).
   PyInstaller's built-in hooks.)
 - This is a onedir test build. A signed Windows installer and the Mac `.app` are
   the next packaging steps on the plan.
+
+## Releasing a build (with checksums)
+
+1. **Build and zip** (onedir is a folder, so you ship a zip):
+   ```powershell
+   pyinstaller hackon-dedupe.spec
+   Compress-Archive -Path dist\HackOn\* -DestinationPath HackOn-Setup.zip -Force
+   ```
+   (Zip the *contents* of `dist\HackOn\` so `HackOn.exe` and `_internal\` sit at the
+   zip root.)
+
+2. **Checksum** — publish SHA-256 (the one that matters; MD5/SHA-1 are broken for
+   security, fine only for spotting a corrupted download):
+   ```powershell
+   Get-FileHash .\HackOn-Setup.zip -Algorithm SHA256 | Format-List Algorithm,Hash,Path | Out-File SHA256SUMS.txt
+   ```
+
+3. **Publish** on GitHub Releases (your site + `DEFAULT_REPO` already point at
+   `/releases`): create a release, attach `HackOn-Setup.zip` and `SHA256SUMS.txt`,
+   and paste the SHA-256 into the notes. Repeat the hash + link on the website.
+
+4. **Users verify** with:
+   ```powershell
+   Get-FileHash .\HackOn-Setup.zip -Algorithm SHA256      # Windows
+   # macOS/Linux:  shasum -a 256 HackOn-Setup.zip
+   ```
+
+A checksum proves the download wasn't corrupted or swapped in transit — not that the
+app is safe or that you built it (the user is trusting the hash on your page). Code
+signing (Authenticode) is the real trust upgrade; until then Windows SmartScreen
+warns "unknown publisher" regardless of checksums.

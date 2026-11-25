@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 import paths
 
-import arr
+import libmanager
 from mediatools import (file_entry, find_strays, folder_key, same_path, title_key,
                         unmapped_reason, valid_media_results, video_files)
 from netpaths import translate
@@ -23,11 +23,11 @@ MOVIE_COUNTS = ("movies", "with_extra_files", "extra_files", "extra_bytes",
 
 def run_movie_scan(settings, progress=print):
     """Compare Radarr's movies with what's in their folders. Returns a dictionary."""
-    config = settings["radarr"]
+    config = libmanager.config(settings, "movies")
     path_map = config["path_map"]
 
     progress("Asking Radarr for its movies")
-    movies = arr.movies(config["url"], config["api_key"])
+    movies = libmanager.movies(settings)
     progress(f"Radarr knows {len(movies)} movies")
 
     groups, missing_folders, unmapped = [], [], []
@@ -50,7 +50,7 @@ def run_movie_scan(settings, progress=print):
         movie_folders.add(folder_key(folder))
         if not folder.is_dir():
             if movie.get("hasFile"):
-                missing_folders.append({**info, "folder": str(folder)})
+                missing_folders.append({**info, "server_path": movie.get("path", ""), "folder": str(folder)})
             continue
 
         radarr_file = movie.get("movieFile") if movie.get("hasFile") else None

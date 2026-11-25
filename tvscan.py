@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 import paths
 
-import arr
+import libmanager
 from mediatools import (file_entry, find_strays, folder_key, title_key,
                         unmapped_reason, valid_media_results, video_files)
 from netpaths import translate
@@ -50,11 +50,11 @@ def episode_code(name):
 
 def run_tv_scan(settings, progress=print):
     """Compare Sonarr's shows with what's in their folders. Returns a dictionary."""
-    config = settings["sonarr"]
+    config = libmanager.config(settings, "tv")
     path_map = config["path_map"]
 
     progress("Asking Sonarr for its shows")
-    shows = arr.series(config["url"], config["api_key"])
+    shows = libmanager.series(settings)
     progress(f"Sonarr knows {len(shows)} shows")
 
     groups, missing_folders, unmapped = [], [], []
@@ -77,7 +77,7 @@ def run_tv_scan(settings, progress=print):
         show_folders.add(folder_key(folder))
         if not folder.is_dir():
             if (show.get("statistics") or {}).get("episodeFileCount"):
-                missing_folders.append({**info, "folder": str(folder)})
+                missing_folders.append({**info, "server_path": show.get("path", ""), "folder": str(folder)})
             continue
 
         files = video_files(folder)
@@ -86,7 +86,7 @@ def run_tv_scan(settings, progress=print):
 
         # Which of these files does Sonarr track? (One question per show.)
         tracked = {}
-        for record in arr.episode_files(config["url"], config["api_key"], show["id"]):
+        for record in libmanager.episode_files(settings, show["id"]):
             local = translate(record.get("path", ""), path_map)
             if local is not None:
                 tracked[folder_key(local)] = record

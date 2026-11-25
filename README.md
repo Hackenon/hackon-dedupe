@@ -111,7 +111,7 @@ and error logs (`logs/`) are local files, kept out of version control by `.gitig
 | [ImageHash](https://github.com/JohannesBuchner/imagehash) | BSD-2-Clause |
 | [NumPy](https://numpy.org/) / [SciPy](https://scipy.org/) | BSD-3-Clause |
 
-*Licence names to be double-checked before release.*
+Full third-party licences and copyrights (all 15 bundled libraries, verified): see [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md). All are permissive and allow commercial use.
 
 ## Licence
 

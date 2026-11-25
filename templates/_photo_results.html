@@ -6,14 +6,13 @@
   {% endfor %}
 
   <div class="actions">
-    <form action="/move" method="post"
-          onsubmit="return confirm('Move ' + document.getElementById('to-move').textContent + ' files to _review? You can undo this.');">
+    <form action="/move" method="post" data-confirm="Move {{ to_move }} files to _review? You can undo this.">
       <button id="move-button" {{ "disabled" if not to_move }}>
         &#9654; MOVE <span id="to-move">{{ to_move }}</span> UNTICKED FILES TO _REVIEW
       </button>
     </form>
     <form action="/undo" method="post">
-      <button class="secondary" {{ "disabled" if not can_undo }}>&#9664; UNDO LAST MOVE</button>
+      <button {{ "disabled" if not can_undo }}>&#9664; UNDO LAST MOVE</button>
     </form>
   </div>
 

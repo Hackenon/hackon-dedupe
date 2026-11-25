@@ -13,6 +13,7 @@ import uuid
 from pathlib import Path
 import paths
 
+import providers
 import vault
 from safejson import read_json, write_json
 
@@ -32,6 +33,8 @@ DEFAULTS = {
     "shortcuts": [],              # photo folder shortcuts: [{"name": ..., "path": ...}]
     "media_details": "button",    # read missing video details: "button" (after a scan) or "auto"
     "bug_report_repo": "",        # GitHub repository for bug reports, e.g. "owner/hackon-dedupe"
+    # Which provider fills each role (see providers.py). Blank = not chosen yet.
+    "roles": {role: "" for role in ("media_server", "movies", "tv")},
     # One block per service, e.g. "radarr": {"url": ..., "api_key": ..., "path_map": {...}}
     **{
         service: {
@@ -49,11 +52,19 @@ DEFAULTS = {
         "path_map": {},           # Plex's library folder -> how this PC reaches it
         "rescan_after_move": True,
     },
+    "jellyfin": {
+        "url": "",                # e.g. http://192.168.1.10:8096
+        "api_key": "",            # made in Jellyfin: Dashboard > API Keys (Emby uses the same)
+        "path_map": {},           # Jellyfin's library folder -> how this PC reaches it
+        "rescan_after_move": True,
+    },
 }
 
 
 # The secrets that go to the password store: (settings section, field).
-SECRETS = [("radarr", "api_key"), ("sonarr", "api_key"), ("plex", "token")]
+# Derived from the registry so new available providers are covered automatically.
+SECRETS = [(key, providers.secret_field(key))
+           for key in providers.PROVIDERS if providers.is_available(key)]
 
 
 def is_configured(settings, service):
@@ -73,14 +84,21 @@ def load_settings():
             settings[key].update(value)
         else:
             settings[key] = value
+    need_save = False
     if vault.available():
-        still_in_file = False
         for section, field in SECRETS:
+            if section not in settings or field not in settings[section]:
+                continue
             in_file = settings[section][field]
             settings[section][field] = vault.get(f"{section}.{field}") or in_file
-            still_in_file = still_in_file or bool(in_file)
-        if still_in_file:  # from before the password store was used: move them over
-            save_settings(settings)
+            if in_file:  # from before the password store was used: move it over
+                need_save = True
+    if "roles" not in saved:
+        _infer_roles(settings)   # one-time: pre-select whatever is already configured
+        _backup_once()
+        need_save = True
+    if need_save:
+        save_settings(settings)
     return settings
 
 
@@ -118,6 +136,10 @@ def valid_settings(data):
         return False
     if not isinstance(data.get("bug_report_repo", ""), str):
         return False
+    roles = data.get("roles", {})
+    if not (isinstance(roles, dict)
+            and all(isinstance(k, str) and isinstance(v, str) for k, v in roles.items())):
+        return False
     plex = data.get("plex", {})
     if not (
         isinstance(plex, dict)
@@ -125,6 +147,15 @@ def valid_settings(data):
         and isinstance(plex.get("rescan_after_move", True), bool)
         and isinstance(plex.get("path_map", {}), dict)
         and all(isinstance(k, str) and isinstance(v, str) for k, v in plex.get("path_map", {}).items())
+    ):
+        return False
+    jelly = data.get("jellyfin", {})
+    if not (
+        isinstance(jelly, dict)
+        and all(isinstance(jelly.get(k, ""), str) for k in ("url", "api_key"))
+        and isinstance(jelly.get("rescan_after_move", True), bool)
+        and isinstance(jelly.get("path_map", {}), dict)
+        and all(isinstance(k, str) and isinstance(v, str) for k, v in jelly.get("path_map", {}).items())
     ):
         return False
     for service in SERVICES:
@@ -165,3 +196,55 @@ def plex_client_id():
         settings["plex"]["client_id"] = str(uuid.uuid4())
         save_settings(settings)
     return settings["plex"]["client_id"]
+
+
+# ------------------------------------------------------- provider roles
+
+def provider_configured(settings, key):
+    """True when provider `key` has enough saved to use it."""
+    config = settings.get(key, {})
+    if not isinstance(config, dict):
+        return False
+    secret = providers.secret_field(key)
+    if not (config.get("url") and config.get(secret)):
+        return False
+    # Library managers also need at least one mapped folder; a media server
+    # maps libraries but can work from its own paths.
+    if providers.role_of(key) in ("movies", "tv"):
+        return any(config.get("path_map", {}).values())
+    return True
+
+
+def _infer_roles(settings):
+    """Pre-select the provider already configured for each role (one-time)."""
+    roles = settings.setdefault("roles", {r: "" for r in providers.ROLES})
+    for role in providers.ROLES:
+        if roles.get(role):
+            continue
+        for key in providers.available_for(role):
+            if provider_configured(settings, key):
+                roles[role] = key
+                break
+
+
+def _backup_once():
+    """Copy settings.json aside once, before the first providers-era save."""
+    backup = SETTINGS_FILE.with_name("settings.json.pre-providers")
+    try:
+        if SETTINGS_FILE.exists() and not backup.exists():
+            backup.write_bytes(SETTINGS_FILE.read_bytes())
+    except OSError:
+        pass
+
+
+def active_type(settings, role):
+    """The provider chosen for `role`, or '' if none."""
+    return settings.get("roles", {}).get(role, "")
+
+
+def role_config(settings, role):
+    """(type, config_block) for the active provider of `role`; ('', None) if unset."""
+    chosen = active_type(settings, role)
+    if not chosen:
+        return "", None
+    return chosen, settings.get(chosen)

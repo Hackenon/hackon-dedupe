@@ -12,6 +12,7 @@ a = Analysis(
         ('templates', 'templates'),   # Flask HTML templates (read-only, bundled)
         ('assets', 'assets'),         # logos / favicon served at /assets
         ('docs', 'docs'),             # HELP.md / INSTALL.md for the in-app Help page
+        ('THIRD-PARTY-NOTICES.md', '.'),  # third-party licence notices
     ],
     hiddenimports=[
         'keyring.backends.Windows',   # where API keys / Plex token are stored on Windows

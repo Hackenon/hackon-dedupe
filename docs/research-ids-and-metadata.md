@@ -25,6 +25,8 @@ connected, which is our main audience.
 The only gap is **pure folder mode** (no Radarr/Sonarr/Plex at all). There we'd have to look a
 title up ourselves, and that's the only place an external service comes in.
 
+##### NOTE FROM BILL: **pure folder mode** might not use this information, but I do want to use this to redownload missing movies. WE could prompt the user ( or just use the folder name if it looks like a movie name) to ask the arr for a add media request.  Then show the user what the arr recommends downloading. Then we simply complete the movie add request and the arr would complete the process.  WE would just update our json results once the media was "recovered".  This is one of the Advanced Data Recovery options.
+
 ## If we ever do need an external lookup (folder-only mode)
 Ranked by how usable they are for a product we might **sell**:
 

@@ -1,6 +1,17 @@
 {% extends "layout.html" %}
 
 {% block main %}
+  {% macro provider_picker(picker, role) %}
+    <div class="row">
+      <span class="label">USE:</span>
+      <select class="provider-select" data-role="{{ role }}">
+        <option value="">&mdash; NONE &mdash;</option>
+        {% for opt in picker.options %}
+          <option value="{{ opt.key }}"{{ ' disabled' if opt.status != 'available' }}{{ ' selected' if opt.key == picker.selected }}>{{ opt.name }}{{ ' (COMING SOON)' if opt.status != 'available' }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  {% endmacro %}
   {% if first_run %}
     <div class="panel">
       <p>&gt;&gt; FIRST RUN DETECTED.</p>
@@ -11,8 +22,8 @@
           <button class="secondary" id="probe-network">&#9654; PROBE LOCAL NETWORK FOR MY SERVERS</button>
           <span id="probe-network-status" class="meta"></span>
         </div>
-        <p class="meta">// LOOKS ONLY ON YOUR OWN NETWORK ({{ network_prefix or '192.168.1' }}.1-254), ONLY ON THE RADARR, SONARR
-           AND PLEX PORTS, ONLY WHEN YOU PRESS IT. IT CONTACTS DEVICES ON YOUR NETWORK TO SEE WHICH ONES ANSWER.
+        <p class="meta">// LOOKS ONLY ON YOUR OWN NETWORK ({{ network_prefix or '192.168.1' }}.1-254), ONLY ON THE RADARR, SONARR, PLEX,
+           JELLYFIN/EMBY AND MEDUSA/SICKGEAR PORTS, ONLY WHEN YOU PRESS IT. IT CONTACTS DEVICES ON YOUR NETWORK TO SEE WHICH ONES ANSWER.
            <span class="warn">WHY THIS WORKS: THESE SERVERS ACCEPT CONNECTIONS FROM ANY DEVICE ON YOUR NETWORK. ANYTHING ELSE ON IT
            COULD FIND THEM THE SAME WAY. TO PREVENT IT, KEEP THEM OFF UNTRUSTED NETWORKS AND REQUIRE A SIGN-IN.</span></p>
         <div id="probe-network-results"></div>
@@ -21,12 +32,14 @@
   {% endif %}
 
   {% for service in services %}
-    <h2>{{ service.name }} <small>{{ service.media }}</small></h2>
-    <div class="panel service" data-service="{{ service.key }}" data-name="{{ service.name }}">
+    <h2>{{ pickers[service.role].name }}</h2>
+    <p class="meta">// {{ pickers[service.role].blurb }}</p>
+    {{ provider_picker(pickers[service.role], service.role) }}
+    <div class="panel service provider-panel" data-role="{{ service.role }}" data-provider="{{ service.key }}" data-service="{{ service.key }}" data-name="{{ service.name }}" {{ "hidden" if pickers[service.role].selected != service.key }}>
       <div class="row">
         <span class="label">ADDRESS:</span>
         <input type="text" class="url" spellcheck="false"
-               placeholder="http://{{ network_prefix or '192.168.1' }}.x:{{ service.port }}" value="{{ service.url }}">
+               placeholder="http://localhost:{{ service.port }}" value="{{ service.url }}">
       </div>
       <div class="row">
         <span class="label">API KEY:</span>
@@ -73,12 +86,14 @@
     </div>
   {% endfor %}
 
-  <h2>Plex <small>photos, movies, TV</small></h2>
-  <div class="panel" id="plex">
+  <h2>{{ pickers.media_server.name }}</h2>
+  <p class="meta">// {{ pickers.media_server.blurb }}</p>
+  {{ provider_picker(pickers.media_server, "media_server") }}
+  <div class="panel provider-panel" id="plex" data-role="media_server" data-provider="plex" {{ "hidden" if pickers.media_server.selected != 'plex' }}>
     <div class="row">
       <span class="label">ADDRESS:</span>
       <input type="text" class="url" spellcheck="false"
-             placeholder="http://{{ network_prefix or '192.168.1' }}.x:32400" value="{{ plex.url }}">
+             placeholder="http://localhost:32400" value="{{ plex.url }}">
     </div>
     <div class="row">
       <span class="label">SIGN-IN:</span>
@@ -133,6 +148,48 @@
       <div class="host-prompts"></div>
       <div class="mapping-rows">
         {% for server_path, pc_path in plex.path_map.items() %}
+          <div class="row map-row" data-server="{{ server_path }}">
+            <span class="label server-path">{{ server_path }}</span>
+            <input type="text" class="pc-path" spellcheck="false" value="{{ pc_path }}">
+            <button class="secondary browse-row">BROWSE...</button>
+            <span class="path-status"></span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="panel service provider-panel" id="jellyfin" data-role="media_server" data-provider="jellyfin" data-service="jellyfin" data-name="Jellyfin" {{ "hidden" if pickers.media_server.selected != 'jellyfin' }}>
+    <div class="row">
+      <span class="label">ADDRESS:</span>
+      <input type="text" class="url" spellcheck="false"
+             placeholder="http://localhost:8096" value="{{ jellyfin.url }}">
+    </div>
+    <div class="row">
+      <span class="label">API KEY:</span>
+      <input type="password" class="api-key" autocomplete="off" spellcheck="false"
+             placeholder="{{ 'saved ' ~ jellyfin.key_hint ~ ' (leave blank to keep)' if jellyfin.key_hint else 'paste the API key here' }}">
+    </div>
+    <div class="row">
+      <span class="label"></span>
+      <span class="meta">// MAKE ONE IN JELLYFIN: DASHBOARD &gt; API KEYS &gt; +. THE SAME KEY WORKS FOR EMBY.</span>
+    </div>
+    <div class="row">
+      <span class="label"></span>
+      <button class="test">TEST CONNECTION</button>
+      <span class="test-result"></span>
+    </div>
+    <div class="row">
+      <span class="label"></span>
+      <label><input type="checkbox" class="jf-rescan" {{ "checked" if jellyfin.rescan_after_move }}>
+        TELL JELLYFIN TO RESCAN AFTER MOVING FILES</label>
+    </div>
+    <div class="mapping" {{ "hidden" if not jellyfin.path_map }}>
+      <p class="meta">// JELLYFIN'S LIBRARIES USE THE FOLDERS ON THE LEFT. FOLDERS THIS COMPUTER CAN ALREADY REACH ARE
+         FILLED IN. FOR ANY MARKED [NOT FOUND], BROWSE TO THE SAME FOLDER.</p>
+      <div class="host-prompts"></div>
+      <div class="mapping-rows">
+        {% for server_path, pc_path in jellyfin.path_map.items() %}
           <div class="row map-row" data-server="{{ server_path }}">
             <span class="label server-path">{{ server_path }}</span>
             <input type="text" class="pc-path" spellcheck="false" value="{{ pc_path }}">
@@ -340,6 +397,25 @@
       });
     }
 
+    // ---- Provider pickers: show only the chosen app's settings panel ----
+    function syncPicker(sel) {
+      const role = sel.dataset.role, chosen = sel.value;
+      document.querySelectorAll('.provider-panel[data-role="' + role + '"]')
+        .forEach(p => { p.hidden = (p.dataset.provider !== chosen); });
+    }
+    const SERVICE_ROLE = { radarr: "movies", sonarr: "tv", plex: "media_server", jellyfin: "media_server" };
+    document.querySelectorAll(".provider-select").forEach(sel => {
+      syncPicker(sel);
+      sel.addEventListener("change", () => syncPicker(sel));
+    });
+
+    // Click an empty address box to drop in its localhost default (the hint).
+    document.querySelectorAll("input.url").forEach(input => {
+      input.addEventListener("focus", () => {
+        if (!input.value.trim() && input.placeholder) input.value = input.placeholder;
+      });
+    });
+
     // ---- Each service section (Radarr, Sonarr) works the same way ----
     document.querySelectorAll(".service").forEach(section => {
       const name = section.dataset.name.toUpperCase();
@@ -492,6 +568,8 @@
           path_map: pathMap,
         };
       });
+      const jf = document.getElementById("jellyfin");
+      if (jf && services.jellyfin) services.jellyfin.rescan_after_move = jf.querySelector(".jf-rescan").checked;
 
       const plexMap = {};
       plexSection.querySelectorAll(".map-row").forEach(row =>
@@ -506,8 +584,10 @@
       const mediaDetails = document.querySelector('input[name="media-details"]:checked')?.value || "button";
       const moveTo = Object.fromEntries([...document.querySelectorAll(".move-default")]
         .map(i => [i.dataset.service, i.value.trim()]));
+      const roles = {};
+      document.querySelectorAll(".provider-select").forEach(sel => { roles[sel.dataset.role] = sel.value; });
       const { ok, data } = await post("/setup/save", { services, plex: plexSettings, media_details: mediaDetails,
-                                                         move_to: moveTo,
+                                                         move_to: moveTo, roles,
                                                          bug_report_repo: document.getElementById("bug-repo").value });
       if (!ok) { say(result, "ERROR: " + data.error, true); return; }
 
@@ -537,6 +617,8 @@
           ? document.getElementById("plex")
           : document.querySelector(`.service[data-service="${service}"]`);
         if (!section) return;
+        const sel = document.querySelector('.provider-select[data-role="' + (SERVICE_ROLE[service] || "") + '"]');
+        if (sel) { sel.value = service; syncPicker(sel); }
         section.querySelector(".url").value = url;
         if (apiKey && section.querySelector(".api-key")) section.querySelector(".api-key").value = apiKey;
         section.scrollIntoView({ behavior: "smooth" });
@@ -547,7 +629,7 @@
       probeNetworkButton.addEventListener("click", async () => {
         const status = document.getElementById("probe-network-status");
         const results = document.getElementById("probe-network-results");
-        const steps = ["MAPPING LOCAL SUBNET...", "SWEEPING PORTS 7878 / 8989 / 32400...", "FINGERPRINTING RESPONDERS..."];
+        const steps = ["MAPPING LOCAL SUBNET...", "SWEEPING PORTS 7878 / 8989 / 32400 / 8096 / 8081...", "FINGERPRINTING RESPONDERS..."];
         probeNetworkButton.disabled = true; results.innerHTML = "";
         let step = 0;
         status.className = "meta";
@@ -584,6 +666,12 @@
             const tags = [];
             if (a.preferred) tags.push('<span class="phos">&#9733; PREFERRED // FASTER LINK (' + a.ms + ' ms)</span>');
             else if (multi) tags.push('<span class="meta">// ' + a.ms + ' ms</span>');
+            if (group.supported === false) {
+              tags.push('<span class="warn">// DETECTED &mdash; NOT YET SUPPORTED (ON THE ROADMAP)</span>');
+              row.innerHTML = `<span class="label"></span><span class="filename">${a.url} ${tags.join(" ")}</span>`;
+              block.appendChild(row);
+              return;
+            }
             if (a.has_key) tags.push('<span class="warn">// API KEY READ (THIS SERVER ALLOWS LOCAL ACCESS WITHOUT A SIGN-IN)</span>');
             else if (group.service === "plex") tags.push('<span class="meta">// SIGN IN BELOW</span>');
             else tags.push('<span class="meta">// NEEDS AN API KEY (TYPE IT BELOW)</span>');

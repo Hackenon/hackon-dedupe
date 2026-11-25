@@ -43,7 +43,7 @@ def run_scan(folder, progress=print, cache=None):
     #    good, so keep the one with the shortest name: usually the original,
     #    not "photo (1).jpg".
     progress("Checking for exact duplicates")
-    exact_groups = find_exact_duplicates(photos + videos, cache)
+    exact_groups = find_exact_duplicates(photos + videos, cache, progress)
     extras = set()  # extra exact copies, left out of the look-alike check
     for group in exact_groups:
         group = sorted(group, key=lambda p: (len(p.name), str(p)))

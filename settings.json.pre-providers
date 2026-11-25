@@ -1,0 +1,39 @@
+{
+  "setup_done": true,
+  "shortcuts": [],
+  "media_details": "button",
+  "bug_report_repo": "",
+  "radarr": {
+    "url": "http://192.168.20.128:7878",
+    "api_key": "",
+    "path_map": {
+      "\\\\10.10.10.2\\Plex_Media\\Movies\\A - D": "\\\\192.168.20.72\\Plex_Media\\Movies\\A - D",
+      "\\\\10.10.10.2\\Plex_Media\\Movies\\E - L": "\\\\192.168.20.72\\Plex_Media\\Movies\\E - L",
+      "\\\\10.10.10.2\\Plex_Media\\Movies\\M - Q": "\\\\192.168.20.72\\Plex_Media\\Movies\\M - Q",
+      "\\\\10.10.10.2\\Plex_Media\\Movies\\R - Z": "\\\\192.168.20.72\\Plex_Media\\Movies\\R - Z",
+      "\\\\10.10.10.2\\Plex_Media\\Movies\\Numbers and Symbols": "\\\\192.168.20.72\\Plex_Media\\Movies\\Numbers and Symbols",
+      "\\\\10.10.10.2\\plex_media\\Movies\\Collections": "\\\\192.168.20.72\\plex_media\\Movies\\Collections"
+    },
+    "move_to": ""
+  },
+  "sonarr": {
+    "url": "http://192.168.20.128:8989",
+    "api_key": "",
+    "path_map": {
+      "\\\\10.10.10.2\\Plex_Media\\TV": "\\\\192.168.20.72\\Plex_Media\\TV"
+    },
+    "move_to": ""
+  },
+  "plex": {
+    "url": "http://192.168.20.128:32400",
+    "token": "",
+    "client_id": "a6ace90f-7dd6-4b44-9391-f8f062e6dfec",
+    "path_map": {
+      "\\\\10.10.10.2\\Plex_Media\\Movies": "\\\\192.168.20.72\\Plex_Media\\Movies",
+      "\\\\10.10.10.2\\Plex_Media\\TV": "\\\\192.168.20.72\\Plex_Media\\TV",
+      "\\\\10.10.10.2\\Plex_Media\\Photos": "\\\\192.168.20.72\\Plex_Media\\Photos"
+    },
+    "rescan_after_move": true,
+    "backdoor": true
+  }
+}

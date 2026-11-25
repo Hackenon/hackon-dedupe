@@ -212,7 +212,7 @@
       document.getElementById("empties-delete").addEventListener("click", async () => {
         const paths = [...emptiesTable.querySelectorAll("input:checked")].map(b => b.dataset.path);
         if (!paths.length) return;
-        if (!confirm("Permanently delete " + paths.length + " folder(s) and everything in them?\n\nThis cannot be undone.")) return;
+        if (!await themedConfirm("Permanently delete " + paths.length + " folder(s) and everything in them?\n\nThis cannot be undone.")) return;
         const result = document.getElementById("empties-result");
         result.textContent = "DELETING...";
         const data = await (await fetch("/photos/empty-folders/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths }) })).json();

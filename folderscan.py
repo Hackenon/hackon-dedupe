@@ -13,7 +13,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from exact import find_exact_duplicates
+from exact import find_exact_duplicates, SAMPLE_THRESHOLD
 from mediatools import details_from_name, parse_folder_name, title_key, video_files
 from tvscan import EPISODE, episode_code
 
@@ -103,11 +103,16 @@ def run_folder_scan(folder, kind, progress=print, cache=None):
     for unit_list in by_name.values():
         link_all(unit_list, "name")
 
-    # 2. Identical contents (size first, then SHA-256; only same-size files are read).
+    # 2. Identical contents. Big files are sampled (head + tail) for speed, so a
+    #    match is "likely identical" until a full VERIFY confirms it.
     progress("Checking for identical files")
     position = {path: i for i, path in enumerate(videos)}
-    for group in find_exact_duplicates(videos, cache):
-        link_all([unit_of[position[p]] for p in group], "identical")
+    sampled_links = []  # unit-sets whose identical match relied on sampling a big file
+    for group in find_exact_duplicates(videos, cache, progress, sample=True):
+        unit_list = [unit_of[position[p]] for p in group]
+        link_all(unit_list, "identical")
+        if any(p.stat().st_size > SAMPLE_THRESHOLD for p in group):
+            sampled_links.append(unit_list)
 
     # 3. Several videos (several movies' worth) in one movie folder.
     if kind == "movies":
@@ -120,6 +125,7 @@ def run_folder_scan(folder, kind, progress=print, cache=None):
 
     for a, b, _ in links:
         leader[find(b)] = find(a)
+    sampled_heads = {find(unit_list[0]) for unit_list in sampled_links}
     reasons = {}
     for a, b, reason in links:
         reasons.setdefault(find(a), set()).add(reason)
@@ -154,6 +160,8 @@ def run_folder_scan(folder, kind, progress=print, cache=None):
             "folder": str(root),
             "has_tracked": False,
             "reasons": sorted(REASON_LABELS[r] for r in reasons.get(head, set())),
+            "verify_sampled": head in sampled_heads,  # matched by sampling a big file; not yet full-hashed
+            "verified": False,
             "files": files,
         })
     groups.sort(key=lambda g: g["title"].lower())

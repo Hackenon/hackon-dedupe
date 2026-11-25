@@ -11,7 +11,8 @@ from datetime import datetime
 from pathlib import Path
 import paths
 
-from mover import free_path, hide_review_from_plex
+from mover import free_path
+import mediaserver
 from safejson import read_json, write_json
 from scan import REVIEW_FOLDER
 
@@ -146,7 +147,7 @@ def apply_moves(results, settings, service, plan, destination=None):
         moves.append(batch)
         save_moves(_kind_for(service), moves)
         for root in touched_roots:
-            note = hide_review_from_plex(root)
+            note = mediaserver.ignore_review(settings, root)
             if note:
                 notes.append(note)
     return len(batch["moves"]), notes
