@@ -1718,7 +1718,7 @@ def watch_for_close():
             os._exit(0)
 
 
-def theme_console():
+def theme_console(no_browser=False):
     """Dress the console window to match the app: green on black, with a banner."""
     if sys.platform.startswith("win"):
         try:
@@ -1726,26 +1726,33 @@ def theme_console():
             os.system("color 0A")  # black background, bright green text
         except Exception:
             pass
+    quit_hint = ("C:\\> Running headless (no auto-quit). Press Ctrl+C to stop."
+                 if no_browser else
+                 "C:\\> Close the browser window to quit.")
     print(
         "\n  ==============================================================\n"
         "   HackOn Photo & Video DeDupe   ::   HackOn Systems\n"
         "  ==============================================================\n"
         "   C:\\> SERVER RUNNING  ->  http://127.0.0.1:5000\n"
-        "   C:\\> Close the browser window to quit.\n"
+        f"   {quit_hint}\n"
     )
 
 
 if __name__ == "__main__":
     try:
-        theme_console()
-        if "--no-browser" not in sys.argv:
+        no_browser = "--no-browser" in sys.argv
+        theme_console(no_browser)
+        if not no_browser:
             open_browser_once()
         if DEBUG:
             app.run(debug=True)  # dev: auto-reload on save + in-browser debugger
         else:
-            # App mode: a real WSGI server (no dev-server warning), and quit
-            # when the browser closes.
-            threading.Thread(target=watch_for_close, daemon=True).start()
+            # App mode: a real WSGI server (no dev-server warning). Quit when the
+            # browser closes -- but only when we opened one. With --no-browser the
+            # server runs headless (no page to heartbeat /alive), so the close
+            # watchdog must stay OFF or it would exit after EXIT_GRACE seconds.
+            if not no_browser:
+                threading.Thread(target=watch_for_close, daemon=True).start()
             from waitress import serve
             serve(app, host="127.0.0.1", port=5000, threads=8)
     except (Exception, SystemExit) as error:  # e.g. the port is already in use

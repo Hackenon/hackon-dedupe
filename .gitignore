@@ -38,3 +38,9 @@ PLAN.md
 DEPLOY.local.md
 build/
 dist/
+
+# Release artifacts from tools/build_exe.py --release (publish to GitHub Releases, not Git)
+HackOn-Setup.zip
+HackOn-Setup.exe
+icon-preview.png
+SHA256SUMS.txt

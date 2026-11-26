@@ -45,7 +45,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # icon='assets/icon.ico',  # add a real .ico later; PyInstaller can't use the .svg
+    icon='assets/icon.ico',   # embedded in HackOn.exe (shortcuts inherit it)
 )
 coll = COLLECT(
     exe,
