@@ -56,6 +56,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "firewall"; Description: "Allow other computers on your network to reach it (opens firewall port 5000, Private networks only)"; GroupDescription: "Network access:"; Flags: unchecked
 
 [Files]
 Source: "{#MySourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -66,6 +67,9 @@ Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\HackOn Photo & Video DeDupe"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
+; Opt-in: open the LAN only when the Network-access task was ticked. The installer
+; runs elevated, so netsh needs no extra prompt. Scoped to Private networks.
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""HackOn Photo & Video DeDupe"" dir=in action=allow protocol=TCP localport=5000 profile=private"; Tasks: firewall; Flags: runhidden; StatusMsg: "Opening firewall port 5000 for network access..."
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
@@ -137,3 +141,7 @@ begin
   // Re-apply so controls realised per-page pick up the theme too.
   ApplyTheme;
 end;
+
+[UninstallRun]
+; Remove the firewall rule on uninstall so no open port is left behind.
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""HackOn Photo & Video DeDupe"""; Flags: runhidden; RunOnceId: "DelHackOnFwRule"

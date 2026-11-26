@@ -250,7 +250,6 @@
     <div class="subsection">
       <div class="subhead">BUG REPORTS</div>
       <div class="indent">
-        <div class="row"><input type="text" id="bug-repo" spellcheck="false" placeholder="GitHub repository, e.g. owner/hackon-dedupe" value="{{ bug_report_repo }}"></div>
         <div class="row"><span class="meta">// "REPORT BUG" OPENS A PRE-FILLED ISSUE HERE. YOU REVIEW AND SUBMIT IT YOURSELF. KEYS, NETWORK ADDRESSES
           AND YOUR WINDOWS USERNAME ARE REMOVED; FILE AND FOLDER NAMES (NAS NAME, TITLES) ARE NOT. EDIT THEM ON GITHUB IF NEEDED.</span></div>
         {% if error_count %}
@@ -322,9 +321,8 @@
       const input = row.querySelector(".pc-path");
       input.addEventListener("change", () => checkRow(row));
       row.querySelector(".browse-row").addEventListener("click", async () => {
-        say(row.querySelector(".path-status"), "WAITING FOR FOLDER PICKER...");
-        const { ok, data } = await post("/browse");
-        if (ok && data.path) input.value = data.path;
+        const path = await pickFolder(input.value);
+        if (path) input.value = path;
         checkRow(row);
       });
       checkRow(row);
@@ -587,8 +585,7 @@
       const roles = {};
       document.querySelectorAll(".provider-select").forEach(sel => { roles[sel.dataset.role] = sel.value; });
       const { ok, data } = await post("/setup/save", { services, plex: plexSettings, media_details: mediaDetails,
-                                                         move_to: moveTo, roles,
-                                                         bug_report_repo: document.getElementById("bug-repo").value });
+                                                         move_to: moveTo, roles });
       if (!ok) { say(result, "ERROR: " + data.error, true); return; }
 
       // Keys are saved; don't leave them sitting in the page.
@@ -719,8 +716,8 @@
 
     document.querySelectorAll(".browse-move").forEach(btn => btn.addEventListener("click", async () => {
       const input = btn.parentElement.querySelector(".move-default");
-      const { ok, data } = await post("/browse");
-      if (ok && data.path) input.value = data.path;
+      const path = await pickFolder(input.value);
+      if (path) input.value = path;
     }));
 
   </script>

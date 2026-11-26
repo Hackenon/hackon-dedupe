@@ -48,7 +48,7 @@ import exact
 import perf
 import vault
 from mediatools import folder_contents, folder_key, video_files
-from netpaths import network_host, network_prefix, swap_host, to_server_path, translate
+from netpaths import network_host, network_prefix, swap_host, this_computer_address, to_server_path, translate
 from mover import files_to_move, load_moves, move_extras, undo_last
 import mediamover
 from moviescan import load_movie_results, run_movie_scan, save_movie_results
@@ -60,6 +60,7 @@ from results import load_results, run_scan, save_results
 import reviewcleanup
 import playback
 import ffmpegsetup
+import dirbrowse
 from near import UNREADABLE
 from scan import VIDEO_TYPES, folder_has_media
 from safejson import read_json, take_notices, write_json
@@ -87,6 +88,21 @@ app.secret_key = os.urandom(16)  # needed for flash() messages
 #     Requests with no label don't come from a web page (e.g. Python tools).
 
 LOCAL_NAMES = {"127.0.0.1", "localhost", "[::1]"}
+
+
+def allow_network_host(bind_host):
+    """Opt in to LAN access (used by --host): allow this computer's own network
+    address through the same-origin guard, so http://<lan-ip>:5000 works. A
+    specific bind address is allowed too; 0.0.0.0 / :: aren't names anyone browses
+    to. FOREIGN Host names are still rejected, so DNS-rebinding protection stays on.
+    The app has no password: anyone who can reach the allowed address can move or
+    delete files. Returns this computer's LAN address, or None."""
+    if bind_host.lower() not in ("0.0.0.0", "::", "127.0.0.1", "localhost"):
+        LOCAL_NAMES.add(bind_host.lower())
+    lan = this_computer_address()
+    if lan:
+        LOCAL_NAMES.add(str(lan).lower())
+    return lan
 
 
 @app.before_request
@@ -314,32 +330,17 @@ def delete_shortcut(index):
     return {"ok": True}
 
 
-# The Windows folder picker runs as its own small Python program, so it
-# can't interfere with the web server. It prints the chosen folder.
-PICKER_PROGRAM = """
-import tkinter as tk
-from tkinter import filedialog
-root = tk.Tk()
-root.withdraw()
-root.attributes("-topmost", True)   # open in front of the browser
-print(filedialog.askdirectory(title="Choose a folder to scan") or "", end="")
-"""
+# Folder picking happens in the browser via /browse-dirs (dirbrowse.py) so it works
+# headless and from another machine -- a native OS dialog would only appear on the
+# server's own screen.
 
 
-@app.post("/browse")
-def browse():
-    try:
-        result = subprocess.run([sys.executable, "-c", PICKER_PROGRAM],
-                                capture_output=True, text=True, timeout=600)
-    except subprocess.TimeoutExpired:
-        return {"error": "The folder picker was open too long; try again"}, 400
-    if result.returncode != 0:
-        lines = result.stderr.strip().splitlines() or ["Folder picker failed"]
-        error_id = errorlog.record_error("folder picker (BROWSE)", lines[-1],
-                                         details=result.stderr or "(no output)")
-        return {"error": lines[-1], "error_id": error_id}, 500
-    chosen = result.stdout.strip()
-    return {"path": str(Path(chosen)) if chosen else None}
+@app.post("/browse-dirs")
+def browse_dirs():
+    """List the server's subdirectories for the in-app web folder browser
+    (works headless/remote, unlike the native picker above)."""
+    data = request.get_json(silent=True) or {}
+    return dirbrowse.list_dirs(data.get("path") or None)
 
 
 # ---------------------------------------------------------------- setup screen
@@ -1738,14 +1739,32 @@ def theme_console(no_browser=False):
     )
 
 
+def _host_arg():
+    """The value after --host on the command line, or None. Default binding is
+    127.0.0.1 (this computer only); pass --host 0.0.0.0 or --host <lan-ip> to
+    reach the app from other machines on the network."""
+    if "--host" in sys.argv:
+        i = sys.argv.index("--host")
+        if i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+    return None
+
+
 if __name__ == "__main__":
     try:
         no_browser = "--no-browser" in sys.argv
+        bind_host = _host_arg() or "127.0.0.1"
+        network = bind_host.lower() not in ("127.0.0.1", "localhost")
+        lan = allow_network_host(bind_host) if network else None
         theme_console(no_browser)
+        if network:
+            where = f"http://{lan}:5000" if lan else f"{bind_host}:5000"
+            print(f"   C:\\> ON YOUR NETWORK  ->  {where}")
+            print("   C:\\> no password: anyone who can reach this address can move/delete files\n")
         if not no_browser:
             open_browser_once()
         if DEBUG:
-            app.run(debug=True)  # dev: auto-reload on save + in-browser debugger
+            app.run(host=bind_host, debug=True)  # dev: auto-reload on save + in-browser debugger
         else:
             # App mode: a real WSGI server (no dev-server warning). Quit when the
             # browser closes -- but only when we opened one. With --no-browser the
@@ -1754,7 +1773,7 @@ if __name__ == "__main__":
             if not no_browser:
                 threading.Thread(target=watch_for_close, daemon=True).start()
             from waitress import serve
-            serve(app, host="127.0.0.1", port=5000, threads=8)
+            serve(app, host=bind_host, port=5000, threads=8)
     except (Exception, SystemExit) as error:  # e.g. the port is already in use
         # 0 = normal exit. 3 = the auto-reloader restarting the app after a
         # code change (it does this on purpose every time a file is saved).

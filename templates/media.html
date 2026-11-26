@@ -417,12 +417,9 @@
                 `C:\\> HACKON.EXE /${KIND.toUpperCase()} "${folderInput.value}"`));
 
     document.getElementById("browse-folder").addEventListener("click", async () => {
-      const message = document.getElementById("folder-message");
-      message.textContent = "WAITING FOR FOLDER PICKER... (it may open behind this window)";
-      const response = await fetch("/browse", { method: "POST" });
-      const data = await response.json();
-      message.textContent = response.ok ? "" : "ERROR: " + data.error;
-      if (response.ok && data.path) folderInput.value = data.path;
+      document.getElementById("folder-message").textContent = "";
+      const path = await pickFolder(folderInput.value);
+      if (path) folderInput.value = path;
     });
 
     // ---- Keep/Move, strays, MOVE and UNDO (piece 9) ----
@@ -489,10 +486,9 @@
     if (moveLocation) moveLocation.addEventListener("click", async () => {
       const n = Number(moveCount.textContent);
       if (!n) { document.getElementById("move-result").textContent = "NOTHING TICKED TO MOVE."; return; }
-      document.getElementById("move-result").textContent = "WAITING FOR FOLDER PICKER...";
-      const { ok, data } = await postJSON("/browse");
-      if (!ok || !data.path) { document.getElementById("move-result").textContent = "NO FOLDER CHOSEN."; return; }
-      runMove({ mode: "location", path: data.path }, `Move ${n} item(s) into:\n${data.path}?`);
+      const path = await pickFolder();
+      if (!path) { document.getElementById("move-result").textContent = "NO FOLDER CHOSEN."; return; }
+      runMove({ mode: "location", path: path }, `Move ${n} item(s) into:\n${path}?`);
     });
 
     const undoButton = document.getElementById("undo-move");

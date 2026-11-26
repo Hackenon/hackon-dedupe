@@ -68,6 +68,8 @@ and the real Radarr/Sonarr/Jellyfin/Plex. For these:
 - **deleted.py** - tombstone record/load and the `original_path|size` dedup rule.
 - **cache.py** - FingerprintCache key format and size/mtime invalidation.
 - **perf.py** - `estimate_label` formatting and the read-speed EMA.
+- **dirbrowse.py** - server-side directory listing for the in-app folder browser
+  (subdirs only, sorted, unreadable skipped, drive roots / parent handling).
 - **helpdocs.py** - the Markdown->HTML renderer (headings, lists, code, tables,
   inline escape/code/bold/links), incl. the entity-escaping behaviour we hit.
 - **safejson.py** - read/write round-trip, default fallback, broken-file set-aside,
@@ -102,9 +104,9 @@ risk, and is verified by the manual smoke test on the target machine:
   `test_cache.py`, `test_perf.py`, `test_helpdocs.py`, `test_safejson.py`,
   `test_plex.py`, `test_mover.py`, `test_mediamover.py`).
 - Run them all: `python -m unittest discover tests`
-- **Status:** suite green -- 97 tests across exact, near, providers, settings,
+- **Status:** suite green -- 102 tests across exact, near, providers, settings,
   parsers (jellyfin/arr/netscan/plex), deleted, cache, perf, helpdocs, safejson,
-  mover, mediamover.
+  mover, mediamover, dirbrowse.
 - Run one area: `python -m unittest tests.test_exact`
 - Run before `python changelog.py` on any change that touches the functions above.
 

@@ -55,6 +55,8 @@ Output: **`HackOn-Setup.exe`** at the project root, plus its SHA-256 in `SHA256S
 It installs for all users into `C:\Program Files\HackOn Systems\HackOn Photo & Video DeDupe`
 (prompts for admin/UAC),
 adds a Start Menu shortcut and an uninstaller, and offers an optional desktop icon.
+It also offers an optional, default-off task to open firewall port 5000 for LAN access
+(added elevated during install, removed on uninstall; pair with `--host`).
 User data still lives in `%APPDATA%\HackOn`, so the Program Files location stays
 read-only at runtime and uninstalling leaves a tester's settings/results untouched.
 

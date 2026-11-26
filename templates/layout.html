@@ -280,6 +280,14 @@
     .confirm-modal { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .86); }
     .confirm-modal[hidden] { display: none; }
     .confirm-box { width: 90%; max-width: 540px; background: var(--bg); border: 2px solid var(--phos); padding: 14px 16px 16px; box-shadow: 0 0 6px rgba(var(--rgb), .7), 0 0 26px rgba(var(--rgb), .35); }
+    .folder-box { max-width: 640px; }
+    .folder-bar { display: flex; gap: 8px; margin-bottom: 8px; }
+    .folder-bar #folder-path { flex: 1; }
+    .folder-list { height: 46vh; overflow: auto; border: 1px solid var(--dim); background: #04170a; padding: 4px; margin-bottom: 8px; }
+    .folder-list .folder-item { display: block; width: 100%; text-align: left; background: none; border: none; color: var(--phos); font: inherit; padding: 4px 6px; cursor: pointer; }
+    .folder-list .folder-item:hover, .folder-list .folder-item:focus { background: rgba(var(--rgb), .15); outline: none; }
+    .folder-empty { color: var(--soft); padding: 6px; }
+    .folder-error { color: var(--amber); margin: 0 0 8px; }
     .confirm-title { color: var(--phos); font-size: 13px; margin: 0 0 10px; }
     .confirm-title::before { content: "C:\\> "; }
     .confirm-msg { color: var(--phos); white-space: pre-wrap; margin: 0 0 16px; font-size: 13px; line-height: 1.35; }
@@ -605,6 +613,21 @@
       </div>
     </div>
   </div>
+  <div id="folder-modal" class="confirm-modal" hidden>
+    <div class="confirm-box folder-box" role="dialog" aria-modal="true" aria-labelledby="folder-title">
+      <p class="confirm-title" id="folder-title">CHOOSE A FOLDER ON THIS SERVER</p>
+      <div class="folder-bar">
+        <button class="secondary" id="folder-up" type="button" title="Up one level">[ .. ]</button>
+        <input type="text" id="folder-path" class="url" spellcheck="false" placeholder="type or paste a path, then press Enter">
+      </div>
+      <div class="folder-list" id="folder-list"></div>
+      <p class="folder-error" id="folder-error" hidden></p>
+      <div class="confirm-actions">
+        <button class="secondary" id="folder-cancel" type="button">[ CANCEL ]</button>
+        <button id="folder-ok" type="button">[ USE THIS FOLDER ]</button>
+      </div>
+    </div>
+  </div>
   <script>
     // Themed replacement for the browser's unstyled confirm(). Returns a Promise<boolean>.
     function themedConfirm(message, opts) {
@@ -635,6 +658,65 @@
         cancel.addEventListener("click", onCancel);
         document.addEventListener("keydown", onKey);
         modal.addEventListener("mousedown", onBackdrop);
+      });
+    }
+    // Server-side folder browser (works headless/remote; a native dialog would only
+    // show on the server). Returns Promise<string|null> -- the chosen folder, or null.
+    function pickFolder(startPath) {
+      return new Promise(function (resolve) {
+        var modal = document.getElementById("folder-modal");
+        var list = document.getElementById("folder-list");
+        var pathInput = document.getElementById("folder-path");
+        var errorEl = document.getElementById("folder-error");
+        var up = document.getElementById("folder-up");
+        var ok = document.getElementById("folder-ok");
+        var cancel = document.getElementById("folder-cancel");
+        var current = "", parent = null;
+        function render(data) {
+          current = data.path || "";
+          parent = ("parent" in data) ? data.parent : null;
+          pathInput.value = current;
+          up.disabled = (parent === null);
+          errorEl.hidden = !data.error;
+          if (data.error) errorEl.textContent = data.error;
+          list.innerHTML = "";
+          var entries = data.entries || [];
+          if (!entries.length && !data.error) {
+            var empty = document.createElement("div");
+            empty.className = "folder-empty"; empty.textContent = "(no sub-folders here)";
+            list.appendChild(empty);
+          }
+          entries.forEach(function (e) {
+            var b = document.createElement("button");
+            b.type = "button"; b.className = "folder-item";
+            b.textContent = /^[A-Za-z]:[\\\/]?$/.test(e.name) ? e.name : "[ " + e.name + " ]";
+            b.addEventListener("click", function () { load(e.path); });
+            list.appendChild(b);
+          });
+        }
+        function load(path) {
+          fetch("/browse-dirs", { method: "POST", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ path: path }) })
+            .then(function (r) { return r.json(); }).then(render)
+            .catch(function () { errorEl.hidden = false; errorEl.textContent = "Couldn\u0027t reach the server."; });
+        }
+        function done(result) {
+          modal.hidden = true;
+          up.removeEventListener("click", onUp); ok.removeEventListener("click", onOk);
+          cancel.removeEventListener("click", onCancel); pathInput.removeEventListener("keydown", onPathKey);
+          document.removeEventListener("keydown", onKey); modal.removeEventListener("mousedown", onBackdrop);
+          resolve(result);
+        }
+        function onUp() { if (parent !== null) load(parent); }
+        function onOk() { done(current || pathInput.value || null); }
+        function onCancel() { done(null); }
+        function onPathKey(e) { if (e.key === "Enter") { e.preventDefault(); load(pathInput.value); } }
+        function onKey(e) { if (e.key === "Escape") done(null); }
+        function onBackdrop(e) { if (e.target === modal) done(null); }
+        up.addEventListener("click", onUp); ok.addEventListener("click", onOk);
+        cancel.addEventListener("click", onCancel); pathInput.addEventListener("keydown", onPathKey);
+        document.addEventListener("keydown", onKey); modal.addEventListener("mousedown", onBackdrop);
+        modal.hidden = false; load(startPath || "");
       });
     }
     // Any <form data-confirm="..."> shows the themed dialog before it submits.

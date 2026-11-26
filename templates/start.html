@@ -88,10 +88,9 @@
 
     // ---- Folder selection ----
     document.getElementById("browse").addEventListener("click", async () => {
-      message.textContent = "WAITING FOR FOLDER PICKER... (it may open behind this window)";
-      const { ok, data } = await post("/browse");
-      message.textContent = ok ? "" : "ERROR: " + data.error;
-      if (ok && data.path) folderInput.value = data.path;
+      message.textContent = "";
+      const path = await pickFolder(folderInput.value);
+      if (path) folderInput.value = path;
     });
 
     document.querySelectorAll(".use-shortcut").forEach(button =>
