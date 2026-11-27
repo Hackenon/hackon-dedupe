@@ -13,6 +13,8 @@ a = Analysis(
         ('assets', 'assets'),         # logos / favicon served at /assets
         ('docs', 'docs'),             # HELP.md / INSTALL.md for the in-app Help page
         ('THIRD-PARTY-NOTICES.md', '.'),  # third-party licence notices
+        ('LICENSE', '.'),                 # AGPLv3 text (add it before building -- see README)
+        ('COMMERCIAL-LICENSE.md', '.'),   # dual-licence / commercial terms
     ],
     hiddenimports=[
         'keyring.backends.Windows',   # where API keys / Plex token are stored on Windows

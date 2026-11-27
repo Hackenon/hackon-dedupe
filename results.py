@@ -1,3 +1,10 @@
+# HackOn Photo & Video DeDupe
+# Copyright (C) 2026 HackOn Systems
+#
+# This file is part of HackOn Photo & Video DeDupe, licensed under the GNU Affero
+# General Public License v3.0 or later. It comes with NO WARRANTY, to the extent
+# permitted by law. See the LICENSE file or <https://www.gnu.org/licenses/>.
+
 """Piece 4: run every check and save the results to results.json.
 
 The web app reads this file instead of rescanning each time you open it.

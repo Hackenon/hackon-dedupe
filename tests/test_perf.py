@@ -1,3 +1,10 @@
+# HackOn Photo & Video DeDupe
+# Copyright (C) 2026 HackOn Systems
+#
+# This file is part of HackOn Photo & Video DeDupe, licensed under the GNU Affero
+# General Public License v3.0 or later. It comes with NO WARRANTY, to the extent
+# permitted by law. See the LICENSE file or <https://www.gnu.org/licenses/>.
+
 """Tests for perf.py: the read-speed EMA and the estimate label. PERF_FILE is
 redirected to a temp path so the real perf.json is never touched."""
 import tempfile

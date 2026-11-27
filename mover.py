@@ -1,3 +1,10 @@
+# HackOn Photo & Video DeDupe
+# Copyright (C) 2026 HackOn Systems
+#
+# This file is part of HackOn Photo & Video DeDupe, licensed under the GNU Affero
+# General Public License v3.0 or later. It comes with NO WARRANTY, to the extent
+# permitted by law. See the LICENSE file or <https://www.gnu.org/licenses/>.
+
 """Piece 6: move unticked files to the _review folder, with undo.
 
 Every batch of moves is logged in moves.json, so Undo can put each file back

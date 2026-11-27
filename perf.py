@@ -1,3 +1,10 @@
+# HackOn Photo & Video DeDupe
+# Copyright (C) 2026 HackOn Systems
+#
+# This file is part of HackOn Photo & Video DeDupe, licensed under the GNU Affero
+# General Public License v3.0 or later. It comes with NO WARRANTY, to the extent
+# permitted by law. See the LICENSE file or <https://www.gnu.org/licenses/>.
+
 """Remember how fast this computer reads media, to estimate full-hash times.
 
 A full verify (or a full-content scan) has to read whole files, which is slow

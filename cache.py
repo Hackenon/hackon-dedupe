@@ -1,3 +1,10 @@
+# HackOn Photo & Video DeDupe
+# Copyright (C) 2026 HackOn Systems
+#
+# This file is part of HackOn Photo & Video DeDupe, licensed under the GNU Affero
+# General Public License v3.0 or later. It comes with NO WARRANTY, to the extent
+# permitted by law. See the LICENSE file or <https://www.gnu.org/licenses/>.
+
 """Remember fingerprints between scans, so unchanged files aren't read again.
 
 Reading 60 GB over the network takes a while. A file whose size and

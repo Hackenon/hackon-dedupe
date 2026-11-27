@@ -115,8 +115,16 @@ Full third-party licences and copyrights (all 15 bundled libraries, verified): s
 
 ## Licence
 
-**Source-available for inspection.** © 2026 HackOn Systems. All rights reserved.
+**Dual-licensed.**
 
-You're welcome to read and review this code. It is **not** released under an
-open-source licence, so copying, redistributing, or reusing it in your own
-projects isn't permitted for now. A formal licence may follow.
+HackOn Photo & Video DeDupe is free and open source under the **GNU Affero General
+Public License v3.0 (AGPL-3.0)** — see [`LICENSE`](LICENSE). You may use, study,
+modify and share it; but if you distribute it, **or run a modified version as a
+network service**, you must make your version's complete source available under the
+same licence.
+
+For use **without** the AGPL's copyleft obligations — e.g. embedding it in a
+closed-source product or a commercial service — a separate **commercial licence** is
+available from the copyright holder: see [`COMMERCIAL-LICENSE.md`](COMMERCIAL-LICENSE.md).
+
+© 2026 HackOn Systems. “HackOn” is a trademark of HackOn Systems.
