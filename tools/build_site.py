@@ -22,8 +22,9 @@ sys.path.insert(0, str(ROOT))
 import helpdocs  # noqa: E402
 
 SITE = ROOT / "site"
-GITHUB = "https://github.com/Hackenon"            # TODO: real repo
-DOWNLOAD = GITHUB + "/hackon-dedupe/releases"      # TODO: real releases URL
+GITHUB = "https://github.com/Hackenon"            # the user's GitHub profile
+REPO = GITHUB + "/hackon-dedupe"                   # the project repo
+DOWNLOAD = REPO + "/releases"
 
 
 def shell(title, body, active):
@@ -32,7 +33,7 @@ def shell(title, body, active):
     for href, name in nav:
         hi = " style='text-shadow:var(--glow)'" if name == active else ""
         parts.append("<a href='" + href + "'" + hi + ">" + name + "</a>")
-    parts.append("<a href='" + GITHUB + "' target='_blank' rel='noopener'>GITHUB</a>")
+    parts.append("<a href='" + REPO + "' target='_blank' rel='noopener'>GITHUB</a>")
     links = "".join(parts)
     return (
         "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n"
@@ -45,7 +46,7 @@ def shell(title, body, active):
         "  <a class=\"brand\" href=\"index.html\"><img class=\"brandlogo\" src=\"assets/logo-hackon-systems.svg\" alt=\"HackOn Systems\"></a>\n"
         "  <nav>" + links + "</nav>\n</div></header>\n" + body + "\n"
         "<footer class=\"site\"><div class=\"wrap\">\n"
-        "  <div>&copy; 2026 HackOn Systems &middot; <a href=\"" + GITHUB + "\" target=\"_blank\" rel=\"noopener\">Source on GitHub</a></div>\n"
+        "  <div>&copy; 2026 HackOn Systems &middot; AGPLv3 &middot; <a href=\"" + REPO + "\" target=\"_blank\" rel=\"noopener\">Source on GitHub</a></div>\n"
         "  <div class=\"fine\">Not affiliated with Plex, Jellyfin, Radarr or Sonarr. Works alongside them.</div>\n"
         "</div></footer>\n</body>\n</html>\n")
 
@@ -71,7 +72,7 @@ def landing():
         "  <div class=\"btns\">\n"
         "    <a class=\"btn primary\" href=\"" + DOWNLOAD + "\">&#9654; DOWNLOAD</a>\n"
         "    <a class=\"btn\" href=\"install.html\">INSTALL GUIDE</a>\n"
-        "    <a class=\"btn\" href=\"" + GITHUB + "\" target=\"_blank\" rel=\"noopener\">VIEW ON GITHUB</a>\n"
+        "    <a class=\"btn\" href=\"" + REPO + "\" target=\"_blank\" rel=\"noopener\">VIEW ON GITHUB</a>\n"
         "  </div>\n</section>\n"
         "<section><div class=\"wrap\">\n  <h2>" + prompt + " WHAT IT DOES</h2>\n"
         "  <div class=\"features\">" + cards + "</div>\n</div></section>\n"
